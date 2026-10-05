@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>腾讯云快直播 POC · 能否拿到原生 WebRTC 轨道</title>
+  <!--
+    用途：实测腾讯云快直播（LEB）的 Web 播放链路，
+          判断能否在浏览器里拿到原生 MediaStreamTrack（决定帧级同步方案能否沿用）。
+
+    【必须用 127.0.0.1 打开本页】
+      WebCodecs（MediaStreamTrackProcessor）要求「安全上下文」。
+      http://127.0.0.1 与 https 才算安全上下文，http://192.168.x.x 不算，
+      否则无法验证"能否逐帧读取 VideoFrame 与其 PTS"。
+
+    启动方式：
+      cd e:\Traecode\web-director-console
+      python -m http.server 5600 --bind 127.0.0.1
+      浏览器打开 http://127.0.0.1:5600/poc/tencent-leb-probe.html
+  -->
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px; background: #0b0e13; color: #e6edf5;
+      font: 14px/1.6 "Microsoft YaHei", system-ui, sans-serif;
+    }
+    h1 { font-size: 17px; margin: 0 0 4px; }
+    h2 { font-size: 13px; color: #8b98ab; margin: 18px 0 8px; letter-spacing: .5px; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .note { color: #8b98ab; font-size: 13px; margin-bottom: 12px; }
+    .note b { color: #ffd18a; }
+    fieldset {
+      border: 1px solid #2a3444; border-radius: 8px;
+      padding: 12px; margin: 0 0 14px; background: #141922;
+    }
+    legend { color: #8b98ab; font-size: 12px; padding: 0 6px; }
+    label { display: block; font-size: 12px; color: #8b98ab; margin: 8px 0 4px; }
+    input[type="text"] {
+      width: 100%; background: #1b2230; color: #e6edf5;
+      border: 1px solid #2a3444; border-radius: 6px; padding: 7px 9px; font-size: 13px;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    button {
+      background: #1b2230; color: #e6edf5; border: 1px solid #2a3444;
+      border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+    }
+    button:hover { background: #222b3a; border-color: #3c4c63; }
+    button.primary { background: #16532f; border-color: #1f7a45; color: #d7ffe6; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    #verdict { border-radius: 8px; padding: 12px; margin-bottom: 14px; font-size: 14px; border: 1px solid #2a3444; background: #141922; }
+    #verdict.ok { border-color: #1f7a45; background: #10241a; }
+    #verdict.warn { border-color: #7a5c1f; background: #241f10; }
+    #verdict.err { border-color: #7f2b2b; background: #241010; }
+    #log {
+      background: #0d1117; border: 1px solid #2a3444; border-radius: 8px;
+      padding: 10px; height: 420px; overflow-y: auto;
+      font: 12px/1.7 Consolas, "Courier New", monospace; color: #8b98ab;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    #log .t { color: #4a5568; }
+    #log .pc { color: #8ff0b0; }
+    #log .ws { color: #9ecbff; }
+    #log .http { color: #d3b0ff; }
+    #log .ok { color: #8ff0b0; font-weight: 600; }
+    #log .warn { color: #ffd18a; }
+    #log .err { color: #ff9a9a; }
+    #player { width: 100%; max-width: 640px; aspect-ratio: 16/9; background: #000; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>腾讯云快直播 POC · 能否拿到原生 WebRTC 轨道</h1>
+  <p class="note">
+    判断标准：<b>浏览器能否拿到原生 MediaStreamTrack</b>。只有拿到，现有的
+    <code>MediaStreamTrackProcessor</code> 帧级同步方案才能沿用。<br>
+    本页必须用 <b>http://127.0.0.1</b> 打开（WebCodecs 要求安全上下文）。
+  </p>
+
+  <div id="verdict">尚未开始探测。</div>
+
+  <fieldset>
+    <legend>测试目标</legend>
+    <label>腾讯云快直播播放地址（webrtc:// 开头）</label>
+    <input type="text" id="lebUrl" placeholder="webrtc://播放域名/live/流名?txSecret=xxx&txTime=xxx" />
+    <div class="grid">
+      <div>
+        <label>TCPlayer SDK 脚本地址（可选）</label>
+        <input type="text" id="sdkUrl" value="https://web.sdk.qcloud.com/player/tcplayer/release/v4.8.0/tcplayer.v4.8.0.min.js" />
+      </div>
+      <div>
+        <label>Web 端 License URL（可选，TCPlayer 5.x 需要）</label>
+        <input type="text" id="licUrl" placeholder="从腾讯云视立方控制台获取；测试 License 可免费申请" />
+      </div>
+    </div>
+    <label>Web 端 License Key（可选）</label>
+    <input type="text" id="licKey" placeholder="与 License URL 配套" />
+  </fieldset>
+
+  <div class="btns">
+    <button id="btnProbe1" class="primary">探测一：直接试标准 WHEP（无需 SDK / License）</button>
+    <button id="btnProbe2">探测二：用 TCPlayer 播放并检查轨道</button>
+    <button id="btnAnalyze">重新分析 video 元素</button>
+    <button id="btnCopy">复制报告</button>
+    <button id="btnClear">清空</button>
+  </div>
+
+  <h2>播放器（探测二使用）</h2>
+  <div id="player"></div>
+
+  <h2>探测日志</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ============ 环境自检 ============
+  var secure = window.isSecureContext;
+  var hasMSTP = typeof MediaStreamTrackProcessor !== "undefined";
+
+  var state = {
+    pcCount: 0,
+    wsUrls: [],
+    msCount: 0,
+    srcObjectTypes: [],
+    whep: null,
+    whepAttempted: false,
+    events: []
+  };
+
+  // 本页自身发起探测时置为 true，避免把自己的 RTCPeerConnection 误判成"播放器用了 WebRTC"
+  var suppressInstrumentation = false;
+
+  var logEl = document.getElementById("log");
+  var verdictEl = document.getElementById("verdict");
+
+  function now() {
+    return new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  }
+
+  function log(msg, cls) {
+    state.events.push("[" + now() + "] " + msg);
+    var line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.innerHTML = '<span class="t">[' + now() + ']</span> ' + escapeHtml(msg);
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
+    });
+  }
+
+  function setVerdict(level, text) {
+    verdictEl.className = level;
+    verdictEl.innerHTML = text;
+  }
+
+  // ============ 插桩 ①：RTCPeerConnection ============
+  (function patchPC() {
+    var Orig = window.RTCPeerConnection;
+    if (!Orig) { log("插桩① 失败：浏览器不支持 RTCPeerConnection", "err"); return; }
+
+    function Patched(cfg) {
+      // 本页自己的探测连接不计入统计
+      if (suppressInstrumentation) return new Orig(cfg);
+
+      state.pcCount++;
+      log("① new RTCPeerConnection 调用（第 " + state.pcCount + " 次）", "pc");
+      var pc = new Orig(cfg);
+
+      pc.addEventListener("track", function (e) {
+        log("① ontrack: kind=" + e.track.kind + " id=" + e.track.id + " label=" + e.track.label, "pc");
+      });
+      pc.addEventListener("connectionstatechange", function () {
+        log("① connectionState = " + pc.connectionState, "pc");
+      });
+
+      var sld = pc.setLocalDescription.bind(pc);
+      pc.setLocalDescription = function (d) {
+        if (d && d.sdp) {
+          log("① setLocalDescription type=" + d.type + " | SDP 前 200 字: " +
+            d.sdp.slice(0, 200).replace(/\r?\n/g, " ⏎ "), "pc");
+        }
+        return sld(d);
+      };
+      var srd = pc.setRemoteDescription.bind(pc);
+      pc.setRemoteDescription = function (d) {
+        if (d && d.sdp) {
+          log("① setRemoteDescription type=" + d.type, "pc");
+        }
+        return srd(d);
+      };
+      return pc;
+    }
+    Patched.prototype = Orig.prototype;
+    if (Orig.generateCertificate) Patched.generateCertificate = Orig.generateCertificate.bind(Orig);
+    window.RTCPeerConnection = Patched;
+  })();
+
+  // ============ 插桩 ②：WebSocket（信令通道） ============
+  (function patchWS() {
+    var Orig = window.WebSocket;
+    if (!Orig) return;
+
+    function Patched(url, protocols) {
+      state.wsUrls.push(String(url));
+      log("② new WebSocket(" + url + ")", "ws");
+      var ws = protocols !== undefined ? new Orig(url, protocols) : new Orig(url);
+
+      ws.addEventListener("open", function () { log("② ws 已连接", "ws"); });
+      ws.addEventListener("close", function (e) { log("② ws 关闭 code=" + e.code, "ws"); });
+      ws.addEventListener("message", function (e) {
+        var s = typeof e.data === "string" ? e.data : "[二进制 " + (e.data && e.data.byteLength) + " 字节]";
+        log("② ws ← " + String(s).slice(0, 240), "ws");
+      });
+      var send = ws.send.bind(ws);
+      ws.send = function (d) {
+        var s = typeof d === "string" ? d : "[二进制 " + (d && d.byteLength) + " 字节]";
+        log("② ws → " + String(s).slice(0, 240), "ws");
+        return send(d);
+      };
+      return ws;
+    }
+    Patched.prototype = Orig.prototype;
+    ["CONNECTING", "OPEN", "CLOSING", "CLOSED"].forEach(function (k) { Patched[k] = Orig[k]; });
+    window.WebSocket = Patched;
+  })();
+
+  // ============ 插桩 ③：fetch / XHR ============
+  (function patchHttp() {
+    var origFetch = window.fetch;
+    if (origFetch) {
+      window.fetch = function (input, init) {
+        var u = typeof input === "string" ? input : (input && input.url);
+        log("③ fetch " + (init && init.method ? init.method : "GET") + " " + u, "http");
+        return origFetch.apply(this, arguments);
+      };
+    }
+    var origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      log("③ xhr " + method + " " + url, "http");
+      return origOpen.apply(this, arguments);
+    };
+  })();
+
+  // ============ 插桩 ④：MediaSource（若走 MSE 则说明不是 WebRTC） ============
+  (function patchMS() {
+    var Orig = window.MediaSource;
+    if (!Orig) return;
+    function Patched() {
+      state.msCount++;
+      log("④ 创建了 MediaSource（第 " + state.msCount + " 次）→ 说明用的是 MSE，不是 WebRTC", "warn");
+      return new Orig();
+    }
+    Patched.prototype = Orig.prototype;
+    Patched.isTypeSupported = Orig.isTypeSupported.bind(Orig);
+    window.MediaSource = Patched;
+  })();
+
+  // ============ 插桩 ⑤：video.srcObject 赋值 ============
+  (function patchSrcObject() {
+    var desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "srcObject");
+    if (!desc || !desc.set) return;
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+      configurable: true,
+      enumerable: desc.enumerable,
+      get: desc.get,
+      set: function (v) {
+        var t = v === null ? "null" : (v && v.constructor && v.constructor.name) || typeof v;
+        state.srcObjectTypes.push(t);
+        var isMS = (typeof MediaStream !== "undefined") && (v instanceof MediaStream);
+        log("⑤ video.srcObject = " + t + (isMS ? "  ✅ 原生 MediaStream" : ""), isMS ? "ok" : "warn");
+        return desc.set.call(this, v);
+      }
+    });
+  })();
+
+  log("环境自检：isSecureContext=" + secure + "，MediaStreamTrackProcessor=" + (hasMSTP ? "可用" : "不可用"));
+  if (!hasMSTP) {
+    log("⚠ 当前不是安全上下文，无法验证逐帧读取 VideoFrame。请改用 http://127.0.0.1 打开本页。", "warn");
+  }
+
+  function waitIce(pc, ms) {
+    return new Promise(function (resolve) {
+      if (pc.iceGatheringState === "complete") return resolve();
+      var timer = setTimeout(finish, ms);
+      function finish() { clearTimeout(timer); pc.removeEventListener("icegatheringstatechange", onChange); resolve(); }
+      function onChange() { if (pc.iceGatheringState === "complete") finish(); }
+      pc.addEventListener("icegatheringstatechange", onChange);
+    });
+  }
+
+  // ============ 探测一：把 webrtc:// 换成 https:// 试标准 WHEP ============
+  /** 把推流域名 livepush 换成播放域名 liveplay，用于自动纠正误用推流域名的情况 */
+  function urlVariants(raw) {
+    var list = [raw];
+    if (/\.livepush\./i.test(raw)) {
+      var swapped = raw.replace(/\.livepush\./i, ".liveplay.");
+      if (swapped !== raw) list.push(swapped);
+    }
+    return list;
+  }
+
+  async function probeWhep() {
+    var raw = document.getElementById("lebUrl").value.trim();
+    if (!raw) { log("请先填写快直播播放地址", "err"); return; }
+    if (!/^webrtc:\/\//i.test(raw)) log("提示：地址不是 webrtc:// 开头，仍按原样尝试", "warn");
+
+    state.whepAttempted = true;
+    var variants = urlVariants(raw);
+    if (variants.length > 1) {
+      log("⚠ 地址里用的是推流域名 livepush。LEB 播放必须用播放域名，本页会把 liveplay 版本也试一遍", "warn");
+    }
+
+    for (var i = 0; i < variants.length; i++) {
+      var ok = await tryOneWhep(variants[i]);
+      if (ok) { state.whep = { isSdp: true }; updateVerdict(); return; }
+    }
+    state.whep = { isSdp: false };
+    updateVerdict();
+  }
+
+  /** 带超时的 fetch，避免目标域名无响应时探测卡死 */
+  function fetchWithTimeout(url, opts, ms) {
+    var ctrl = new AbortController();
+    var merged = {};
+    for (var k in (opts || {})) merged[k] = opts[k];
+    merged.signal = ctrl.signal;
+    var timer = setTimeout(function () { ctrl.abort(); }, ms);
+    return fetch(url, merged).then(function (r) {
+      clearTimeout(timer);
+      return r;
+    }, function (e) {
+      clearTimeout(timer);
+      throw e;
+    });
+  }
+
+  async function tryOneWhep(raw) {
+    var httpsUrl = raw.replace(/^webrtc:\/\//i, "https://");
+    var host = httpsUrl.replace(/^https:\/\//, "").split("/")[0];
+    log("── 尝试域名 " + host + " ──", "http");
+
+    try {
+      var resp0 = await fetchWithTimeout(httpsUrl, { method: "GET" }, 8000);
+      var body0 = (await resp0.text()).slice(0, 160);
+      log("GET → HTTP " + resp0.status + "  " + body0, "http");
+    } catch (e) {
+      log("GET 失败（CORS / 域名不可达 / 超时）：" + e.message, "warn");
+    }
+
+    suppressInstrumentation = true; // 本页自己建的连接不计入统计
+    var pc = new RTCPeerConnection({ iceServers: [] });
+    try {
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.addTransceiver("audio", { direction: "recvonly" });
+
+      var offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await waitIce(pc, 2000);
+
+      var resp = await fetchWithTimeout(httpsUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/sdp", "Accept": "application/sdp" },
+        body: pc.localDescription.sdp
+      }, 10000);
+      var text = (await resp.text()).slice(0, 300);
+      log("WHEP POST → HTTP " + resp.status, "http");
+      log("响应体：" + text, "http");
+
+      if (text.trim().indexOf("v=") === 0) {
+        await pc.setRemoteDescription({ type: "answer", sdp: text });
+        log("✅ " + host + " 返回了标准 SDP answer —— 可作为标准 WHEP 使用", "ok");
+        return true;
+      }
+      log("❌ " + host + " 未返回标准 SDP，不支持标准 WHEP", "err");
+      return false;
+    } catch (e) {
+      log("WHEP POST 失败：" + e.message, "err");
+      return false;
+    } finally {
+      try { pc.close(); } catch (e) {}
+      suppressInstrumentation = false;
+    }
+  }
+
+  // ============ 探测二：用 TCPlayer 播放并检查 ============
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error("脚本加载失败：" + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function probePlayer() {
+    var raw = document.getElementById("lebUrl").value.trim();
+    var sdkUrl = document.getElementById("sdkUrl").value.trim();
+    if (!raw) { log("请先填写快直播播放地址", "err"); return; }
+    if (!sdkUrl) { log("请填写 TCPlayer SDK 脚本地址", "err"); return; }
+
+    try {
+      if (typeof window.TCPlayer === "undefined") {
+        log("正在加载 TCPlayer SDK：" + sdkUrl, "http");
+        await loadScript(sdkUrl);
+        log("SDK 加载完成，TCPlayer=" + (typeof window.TCPlayer), "http");
+      }
+    } catch (e) {
+      log("SDK 加载失败：" + e.message, "err");
+      return;
+    }
+
+    var baseOpts = { autoplay: true, width: "100%", height: "100%" };
+    var licUrl = document.getElementById("licUrl").value.trim();
+    var licKey = document.getElementById("licKey").value.trim();
+    if (licUrl) baseOpts.licenseUrl = licUrl;
+    if (licKey) baseOpts.licenseKey = licKey;
+
+    var variants = urlVariants(raw);
+    if (variants.length > 1) {
+      log("将依次尝试 " + variants.length + " 个域名（先推流域名，再自动换成播放域名）", "http");
+    }
+
+    for (var i = 0; i < variants.length; i++) {
+      var ok = await tryPlayVariant(variants[i], baseOpts, i);
+      if (ok) break;
+    }
+
+    await analyzeVideos();
+    updateVerdict();
+  }
+
+  function sleep(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+  }
+
+  async function tryPlayVariant(url, baseOpts, index) {
+    var host = url.replace(/^webrtc:\/\//i, "").split("/")[0];
+    log("── 用 " + host + " 尝试 LEB 播放 ──", "http");
+
+    // 每次尝试都用全新的容器，避免上一个播放器残留。
+    // 注意：TCPlayer 4.x 要求容器是 <video> 元素，用 <div> 会报 "The element type must be <video>"
+    if (window.__pocPlayer) {
+      try { window.__pocPlayer.dispose(); } catch (e) {}
+      window.__pocPlayer = null;
+    }
+    var wrap = document.getElementById("player");
+    wrap.innerHTML = "";
+    var box = document.createElement("video");
+    box.id = "pc-" + index;
+    box.setAttribute("width", "640");
+    box.setAttribute("height", "360");
+    box.setAttribute("preload", "auto");
+    box.setAttribute("playsinline", "");
+    box.setAttribute("webkit-playsinline", "");
+    box.muted = true; // 降低自动播放被拦的概率；音频轨道是否存在不影响判断
+    box.style.width = "100%";
+    box.style.height = "100%";
+    box.style.background = "#000";
+    wrap.appendChild(box);
+
+    var opts = {};
+    for (var k in baseOpts) opts[k] = baseOpts[k];
+    opts.sources = [{ src: url, type: "webrtc" }];
+
+    try {
+      window.__pocPlayer = window.TCPlayer(box.id, opts);
+      log("已调用 TCPlayer(" + box.id + ")，开始播放…", "http");
+    } catch (e) {
+      log("TCPlayer 初始化异常：" + e.message, "err");
+      return false;
+    }
+
+    // 分两次检查，给建联留足时间
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await sleep(6000);
+      var vids = Array.prototype.slice.call(document.querySelectorAll("video"));
+      for (var j = 0; j < vids.length; j++) {
+        var v = vids[j];
+        var isMS = (typeof MediaStream !== "undefined") && (v.srcObject instanceof MediaStream);
+        if (isMS || (v.readyState >= 2 && v.videoWidth > 0)) {
+          log("✅ " + host + " 播放成功：分辨率 " + v.videoWidth + "x" + v.videoHeight +
+            "，srcObject=" + (v.srcObject ? v.srcObject.constructor.name : "null"), "ok");
+          return true;
+        }
+      }
+      log("… " + host + " 第 " + (attempt + 1) + " 次检查：还没出画面", "http");
+    }
+
+    log("❌ " + host + " 未出画面（可能流不在线、域名不对或缺少 License）", "warn");
+    return false;
+  }
+
+  // ============ 分析页面上的 video ============
+  async function analyzeVideos() {
+    var vids = Array.prototype.slice.call(document.querySelectorAll("video"));
+    log("⑥ 页面 video 元素数量：" + vids.length, "http");
+
+    for (var i = 0; i < vids.length; i++) {
+      var v = vids[i];
+      var so = v.srcObject;
+      log("⑥ video[" + i + "] srcObject=" + (so ? so.constructor.name : "null") +
+        " readyState=" + v.readyState +
+        " 分辨率=" + v.videoWidth + "x" + v.videoHeight, "http");
+
+      if (so && typeof MediaStream !== "undefined" && so instanceof MediaStream) {
+        var vt = so.getVideoTracks()[0];
+        if (vt) {
+          if (typeof MediaStreamTrackProcessor === "undefined") {
+            log("⑥ 拿到原生视频轨，但本页非安全上下文，无法验证逐帧读取", "warn");
+          } else {
+            try {
+              var proc = new MediaStreamTrackProcessor({ track: vt });
+              var reader = proc.readable.getReader();
+              var res = await reader.read();
+              if (res && res.value) {
+                log("⑥ ✅ 成功读取原生 VideoFrame：" + res.value.displayWidth + "x" +
+                  res.value.displayHeight + "，timestamp=" + res.value.timestamp + " µs", "ok");
+                res.value.close();
+              } else {
+                log("⑥ 未读到帧（流可能还没出画面）", "warn");
+              }
+              try { reader.releaseLock(); } catch (e) {}
+            } catch (e) {
+              log("⑥ 逐帧读取失败：" + e.message, "warn");
+            }
+          }
+        }
+      }
+
+      if (typeof v.captureStream === "function") {
+        try {
+          var cs = v.captureStream();
+          log("⑥ captureStream 可用，轨道：" +
+            cs.getTracks().map(function (t) { return t.kind; }).join(",") || "（无）", "http");
+        } catch (e) {
+          log("⑥ captureStream 调用失败：" + e.message, "warn");
+        }
+      }
+    }
+  }
+
+  // ============ 结论 ============
+  function updateVerdict() {
+    var hasMS = state.srcObjectTypes.indexOf("MediaStream") >= 0;
+    var hasPC = state.pcCount > 0;
+    var whepOk = state.whep && state.whep.isSdp;
+
+    if (whepOk) {
+      setVerdict("ok", "✅ <b>支持标准 WHEP 拉流</b> —— 可以完全不依赖播放器 SDK，" +
+        "直接用现有 <code>RTCPeerConnection</code> 代码路径，帧级同步方案零改动沿用。");
+      return;
+    }
+    if (hasMS) {
+      setVerdict("ok", "✅ <b>播放器把原生 MediaStream 赋给了 video.srcObject</b> —— " +
+        "底层是标准 WebRTC，可以直接取到 <code>MediaStreamTrack</code>，帧级同步方案可行" +
+        "（需让播放器把 video 暴露出来，或按抓到的信令自行实现拉流）。");
+      return;
+    }
+    if (hasPC) {
+      setVerdict("warn", "⚠ <b>底层确实创建了 RTCPeerConnection（是标准 WebRTC）</b>，" +
+        "但没有把原生 <code>MediaStream</code> 暴露到 <code>video.srcObject</code>。" +
+        "需要按上面抓到的信令自行实现拉流，或向腾讯云确认是否有 API 暴露轨道。");
+      return;
+    }
+    if (state.wsUrls.length) {
+      setVerdict("warn", "⚠ <b>没有创建 RTCPeerConnection，但抓到了 WebSocket 信令地址</b> —— " +
+        "说明走的是私有传输协议，不能直接拿原生轨道。");
+      return;
+    }
+    if (state.whepAttempted && state.whep && state.whep.isSdp === false) {
+      setVerdict("warn", "⚠ <b>标准 WHEP 拉流不可用</b>（探测一已确认），且暂未检测到播放器的 WebRTC 活动。" +
+        "下一步请用 <b>探测二</b> 加载 TCPlayer 播放真实 LEB 地址，" +
+        "再回来看是否创建了 RTCPeerConnection、是否把原生 MediaStream 赋给了 video.srcObject。");
+      return;
+    }
+    setVerdict("err", "❌ <b>未检测到任何 WebRTC 活动</b> —— 可能播放未真正启动、" +
+      "缺少 License、地址无效或还没出画面。请检查日志。");
+  }
+
+  // ============ 事件绑定 ============
+  document.getElementById("btnProbe1").addEventListener("click", function () { probeWhep(); });
+  document.getElementById("btnProbe2").addEventListener("click", function () { probePlayer(); });
+  document.getElementById("btnAnalyze").addEventListener("click", async function () {
+    await analyzeVideos();
+    updateVerdict();
+  });
+  document.getElementById("btnCopy").addEventListener("click", function () {
+    var text = state.events.join("\n");
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(
+        function () { log("报告已复制到剪贴板", "ok"); },
+        function () { log("复制失败，请手动全选日志区域", "warn"); }
+      );
+    } else {
+      log("浏览器不支持剪贴板 API，请手动复制日志区域", "warn");
+    }
+  });
+  document.getElementById("btnClear").addEventListener("click", function () {
+    state.events = [];
+    logEl.innerHTML = "";
+    state.pcCount = 0;
+    state.wsUrls = [];
+    state.msCount = 0;
+    state.srcObjectTypes = [];
+    state.whep = null;
+    state.whepAttempted = false;
+    setVerdict("", "尚未开始探测。");
+  });
+
+  // 支持 ?url= 预填
+  var q = new URLSearchParams(location.search);
+  if (q.get("url")) document.getElementById("lebUrl").value = q.get("url");
+})();
+</script>
+</body>
+</html>
