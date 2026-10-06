@@ -954,6 +954,86 @@
     }
   }, 500);
 
+  // ---------- 底部「地址生成器」（阿里云 / 腾讯云，纯本地计算） ----------
+  /** 把生成结果拼成可复制的文本 */
+  function formatGenResult(res) {
+    const lines = [];
+    if (res.push.length) {
+      lines.push("【推流地址】");
+      res.push.forEach((x) => lines.push(x.label + "：" + x.url));
+    }
+    if (res.play.length) {
+      if (lines.length) lines.push("");
+      lines.push("【播放地址】");
+      res.play.forEach((x) => lines.push(x.label + "：" + x.url));
+    }
+    return lines.join("\n");
+  }
+
+  /** 复制文本：http 非安全上下文下 navigator.clipboard 不可用，退回 execCommand */
+  function copyFromTextarea(el) {
+    if (!el.value) return;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(el.value);
+      log("已复制到剪贴板", "ok");
+      return;
+    }
+    el.removeAttribute("readonly");
+    el.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    el.setAttribute("readonly", "");
+    el.blur();
+    log(ok ? "已复制到剪贴板" : "复制失败，请手动选中文本框内容复制", ok ? "ok" : "warn");
+  }
+
+  /**
+   * 初始化一个生成器卡片。
+   * @param {string} prefix 元素 id 前缀（ali / tx）
+   * @param {Function} buildFn buildAliyunUrls 或 buildTencentUrls
+   */
+  function setupUrlGenerator(prefix, buildFn) {
+    const el = (n) => $(prefix + n);
+
+    // 机位复选框：从当前机位列表生成，勾选哪个就为哪个机位生成地址
+    const camsBox = el("Cams");
+    (CFG.cameras || []).forEach((cam) => {
+      const lab = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = cam.id;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(cam.id));
+      camsBox.appendChild(lab);
+    });
+
+    el("Gen").addEventListener("click", () => {
+      const out = el("Out");
+      const streams = Array.prototype.slice
+        .call(camsBox.querySelectorAll("input:checked"))
+        .map((cb) => cb.value);
+      try {
+        out.value = formatGenResult(buildFn({
+          pushDomain: el("PushDomain").value,
+          playDomain: el("PlayDomain").value,
+          app: el("App").value,
+          stream: el("Stream").value,
+          pushKey: el("PushKey").value,
+          playKey: el("PlayKey").value,
+          minutes: el("Minutes").value,
+          streams: streams
+        }));
+      } catch (err) {
+        out.value = "生成失败：" + (err && err.message ? err.message : String(err));
+      }
+    });
+
+    el("Copy").addEventListener("click", () => copyFromTextarea(el("Out")));
+  }
+
+  setupUrlGenerator("ali", buildAliyunUrls);
+  setupUrlGenerator("tx", buildTencentUrls);
+
   // ---------- 初始化 ----------
   const refCam = engine.reference;
   ui.statRef.textContent = "基准机位：" + (refCam ? refCam.name : "-");
