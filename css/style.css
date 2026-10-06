@@ -45,65 +45,24 @@ h1, h2 { margin: 0; font-weight: 600; }
 *::-webkit-scrollbar-thumb:hover { background: #3c4c63; background-clip: content-box; }
 *::-webkit-scrollbar-corner { background: transparent; }
 
-/* ============ 底部：使用教程 + 地址生成器（并排） ============ */
-.bottom {
+/* ============ 底部使用教程 ============ */
+.tutorial {
   background: var(--bg);
   border-top: 1px solid var(--line);
   padding: 24px 0 40px;
 }
-.bottom-inner {
-  max-width: var(--content-max);
+.tutorial-inner {
+  max-width: 960px;
   margin: 0 auto;
   padding: 0 16px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
 }
-.tutorial-head,
-.tools-head {
+.tutorial-head {
   display: flex;
   align-items: baseline;
   gap: 12px;
   margin-bottom: 18px;
 }
-.tutorial-head h2, .tools-head h2 { font-size: 18px; }
-
-/* ---- 地址生成器 ---- */
-.tools {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 12px;
-  align-content: start;
-}
-.tools-head { grid-column: 1 / -1; margin-bottom: 6px; }
-.gen-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px 16px;
-  min-width: 0;
-}
-.gen-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
-.gen-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
-.cam-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 3px; }
-.cam-checks label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.cam-checks input { accent-color: var(--accent); }
-.gen-out {
-  margin-top: 8px;
-  resize: vertical;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.6;
-}
+.tutorial-head h2 { font-size: 18px; }
 
 .tutorial-steps {
   display: grid;
@@ -250,12 +209,20 @@ select:focus {
 /* 占位符文字：与页面次要文字同色系，不刺眼 */
 input::placeholder, textarea::placeholder { color: #5c6b80; }
 
-/* 每路机位鉴权串输入框：等宽字体便于核对长串，只允许纵向拉伸 */
-.auth-keys {
-  resize: vertical;
-  font-family: Consolas, "Courier New", monospace;
+/* 每路机位拉流地址：一行一个「机位名 + 输入框」 */
+.cam-urls { display: grid; gap: 6px; }
+.cam-urls .cam-row { display: flex; align-items: center; gap: 6px; }
+.cam-urls .cam-row span {
+  flex: 0 0 auto;
+  width: 40px;
   font-size: 12px;
-  line-height: 1.6;
+  color: var(--text-dim);
+}
+.cam-urls input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  font-family: Consolas, "Courier New", monospace;
 }
 
 input[type="range"] { width: 100%; accent-color: var(--accent); }
@@ -512,5 +479,4 @@ input[type="file"]::file-selector-button:hover { border-color: #3c5a7a; }
   .program-panel, .multiview-panel, .control-panel { grid-column: 1; grid-row: auto; }
   .multiview-grid { grid-auto-rows: auto; }
   .tile canvas { aspect-ratio: 16 / 9; }
-  .bottom-inner { grid-template-columns: 1fr; }
 }

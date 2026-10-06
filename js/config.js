@@ -26,14 +26,12 @@ window.DIRECTOR_CONFIG = {
    *   "tcplayer"  —— 腾讯云快直播 LEB（加载 TCPlayer，从 video.srcObject 取原生轨道）
    *   "aliplayer" —— 阿里云视频直播（加载 Aliplayer Web SDK，支持 RTS 超低延时 / FLV / HLS）
    *
-   * urlTemplate 支持四个占位符：
-   *   {cam}   机位 ID      {base}  该通道的 base（缺省用全局 serverBase）
-   *   {app}   应用名（缺省用全局 app）
-   *   {auth}  该机位的鉴权参数（整串，不含 ?），按机位在 authKeys 里取，
-   *           例如 auth_key=1791280145-0-0-385e... 或 txSecret=8ba8...&txTime=6AC4D124
+   * 拉流地址有两种给法，优先用第一种：
+   *   urls        —— 每路机位各自的完整地址（在页面「拉流通道 → 每路机位拉流地址」里填），
+   *                  腾讯云 / 阿里云都直接粘服务商生成的原地址（鉴权参数已含在地址里）
+   *   urlTemplate —— 兜底模板，上面留空的机位用它，支持 {cam} {base} {app} 三个占位符
    *
-   * 注意：带防盗链的地址会过期（腾讯云 txTime / 阿里云 auth_key），
-   * 换场次时在设置里更新模板即可。
+   * 注意：带防盗链的地址会过期（腾讯云 txTime / 阿里云 auth_key），换场次时更新地址即可。
    */
   clouds: [
     {
@@ -66,33 +64,20 @@ window.DIRECTOR_CONFIG = {
       name: "阿里云 视频直播 RTS",
       provider: "aliplayer",
       /**
-       * 播流地址。artc:// 为超低延时直播（需在控制台开启「超低延时直播」并对播流域名配 HTTPS）；
-       * 若走标准直播，可换成 http(s)://播流域名/live/{cam}.flv（或 .m3u8）。
-       * {auth} 按机位在下面 authKeys 里取鉴权参数后替换。
+       * 每路机位拉流地址：把控制台生成的播流地址（形如
+       * artc://播流域名/live/cam01?auth_key=…）逐条粘到对应机位。
+       * 留空的机位回退用下面的 urlTemplate。
        */
-      urlTemplate: "artc://aliyunlivepull-sz.mcsakura.cn/live/{cam}?{auth}",
+      urls: {},
       /**
-       * 每路机位各自的鉴权参数（整串，不含 ?），格式 auth_key=1791280145-0-0-385e...
-       *
-       * 阿里云 URL 鉴权的 md5hash 是按「AppName/流名」算的
-       *（sstring = "URI-timestamp-rand-uid-PrivateKey"），所以 6 路机位必须各有一个，
-       * 不能像腾讯云那样 6 路共用同一个。
-       *
-       * auth_key 是临时令牌，换场次会失效，所以默认留空：
-       * 推荐用页面底部「地址生成器」勾选机位生成后，点「应用到导播台」自动写入。
+       * 兜底模板。artc:// 为超低延时直播（需在控制台开启「超低延时直播」并对播流域名配 HTTPS）；
+       * 若走标准直播，可换成 http(s)://播流域名/live/{cam}.flv（或 .m3u8）。
        */
-      authKeys: {
-        cam01: "",
-        cam02: "",
-        cam03: "",
-        cam04: "",
-        cam05: "",
-        cam06: ""
-      },
+      urlTemplate: "artc://aliyunlivepull-sz.mcsakura.cn/live/{cam}",
       /**
        * 成品回传走阿里云时：WHIP 端点就是推流地址本身（把 artc:// 换成 https://），
        * 地址里已经带了 auth_key，不需要再传 streamurl 参数（mode = direct）。
-       * 值由「地址生成器 → 应用到导播台」自动写入。
+       * 在页面「成品输出 → 回传」的下拉里选阿里云，再把该地址填进输入框即可。
        */
       whipPushServer: "",
       whipPushMode: "direct",

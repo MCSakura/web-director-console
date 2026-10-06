@@ -139,7 +139,7 @@
           <label class="switch"><input type="checkbox" id="pushEnabled" /><span>启用回传</span></label>
           <span class="status-light" id="pushLight" title="回传状态"></span>
         </div>
-        <label class="group-title" style="margin-top: 6px;">回传走哪个云 <span class="mini">用底部生成器一键应用</span></label>
+        <label class="group-title" style="margin-top: 6px;">回传走哪个云</label>
         <select id="pushCloudSelect"></select>
         <div id="pushTokenWrap" style="margin-top: 8px;">
           <input type="text" id="pushTokenInput" placeholder="WebRTC 推流地址（含 txTime）" />
@@ -153,14 +153,10 @@
       <div class="control-group">
         <label class="group-title">拉流通道（云 / 自建）</label>
         <select id="cloudSelect"></select>
-        <label class="group-title" style="margin-top: 8px;">地址模板 <span class="mini">用 {cam} 代表机位 ID</span></label>
+        <label class="group-title" style="margin-top: 8px;">每路机位拉流地址 <span class="mini">腾讯云 / 阿里云都直接粘完整地址</span></label>
+        <div class="cam-urls" id="camUrls"></div>
+        <label class="group-title" style="margin-top: 8px;">地址模板 <span class="mini">兜底：上面留空的机位用它，{cam} 代表机位 ID</span></label>
         <input type="text" id="cloudTemplateInput" placeholder="webrtc://livepull.example.com/live/{cam}" />
-        <div id="cloudAuthWrap" style="display: none;">
-          <label class="group-title" style="margin-top: 8px;">每路机位鉴权参数 <span class="mini">每行一个：cam01=鉴权参数</span></label>
-          <textarea id="cloudAuthInput" class="auth-keys" rows="6"
-            placeholder="cam01=auth_key=1791280145-0-0-385e486446e5da1ec76b62cff97d21ac&#10;cam02=txSecret=8ba8...&amp;txTime=6AC4D124"></textarea>
-          <div class="mini" style="margin-top: 4px;">填整串鉴权参数（不含 ?）。阿里云是 auth_key=…，腾讯云是 txSecret=…&amp;txTime=…；鉴权按流名单独计算，6 路各一个</div>
-        </div>
         <div class="row" style="margin-top: 8px;">
           <button id="btnSaveCloud" class="btn small primary">保存并重连</button>
           <button id="btnResetCloud" class="btn small">恢复默认</button>
@@ -185,12 +181,9 @@
     </aside>
   </main>
 
-  <!-- 页面下方：左「使用教程」+ 右「地址生成器」，宽屏并排 -->
-  <footer class="bottom">
-    <div class="bottom-inner">
-
-    <!-- 使用教程（纯静态，不依赖脚本） -->
-    <section class="tutorial">
+  <!-- 使用教程（纯静态，不依赖脚本） -->
+  <footer class="tutorial">
+    <div class="tutorial-inner">
       <div class="tutorial-head">
         <h2>使用教程</h2>
         <span class="mini">按从上到下的顺序操作即可</span>
@@ -203,7 +196,7 @@
           <div class="step-body">
             <div class="step-title">推流准备（6 路机位）</div>
             <p>用 OBS 或其他推流工具，把 6 路画面分别推到<strong>腾讯云快直播</strong>或<strong>阿里云视频直播</strong>，流名依次为 <code>cam01</code>、<code>cam02</code>…<code>cam06</code>；AppName 按你的推流配置填（腾讯云示例用 <code>live</code>）。推荐用 <strong>WHIP（WebRTC）推流</strong>，可免转码费；用 RTMP 推流则把 B 帧设为 0 以免去 B 帧转码费。</p>
-            <p class="mini">播流地址不用去控制台一个个生成：页面底部有<strong>地址生成器</strong>（阿里云 / 腾讯云各一个），填入推流域名、播流域名、AppName、鉴权 Key，勾选需要的机位，点<strong>「应用到导播台」</strong>即可——它会自动把地址模板和每路机位的鉴权参数写进「拉流通道」并切换到对应云（鉴权按流名单算，这样才能一次配齐 6 路）。</p>
+            <p class="mini">播流地址在服务商控制台生成后，到右侧「拉流通道 → 每路机位拉流地址」把 6 条完整地址分别粘到对应机位即可（腾讯云、阿里云都一样，地址里自带鉴权参数，不用再单独填鉴权串）。也可以只填「地址模板」，用 <code>{cam}</code> 占位符让 6 路共用一条模板。</p>
           </div>
         </div>
 
@@ -236,7 +229,7 @@
           <div class="step-body">
             <div class="step-title">成品输出</div>
             <p><strong>虚拟摄像头</strong>：给本机会议软件当摄像头用。<br/>
-            <strong>回传</strong>：先在上方「回传走哪个云」选腾讯云或阿里云，勾选「启用回传」。然后在底部<strong>对应云</strong>的地址生成器里点「应用到导播台」，pgm 推流地址会自动写入——腾讯云走「推流地址」（作为 streamurl 参数），阿里云则直接把 WHIP 端点（artc 换成 https）写进服务地址。码率用「回传码率上限」调（1080p60 建议 6.5–7 Mbps）。</p>
+            <strong>回传</strong>：先在上方「回传走哪个云」选腾讯云或阿里云，勾选「启用回传」，再把控制台生成的 pgm 推流地址填进下面输入框——腾讯云填 <code>webrtc://…</code> 推流地址；阿里云把 <code>artc://</code> 推流地址的协议头改成 <code>https://</code> 再填（它本身就是 WHIP 端点）。码率用「回传码率上限」调（1080p60 建议 6.5–7 Mbps）。</p>
           </div>
         </div>
 
@@ -285,111 +278,10 @@
           <li><strong>改了代码没生效</strong>：服务器已设 <code>Cache-Control: no-cache</code>，普通刷新即可；若仍是旧版，Ctrl+Shift+R 强刷。</li>
         </ul>
       </div>
-    </section>
-
-    <!-- 地址生成器：阿里云 / 腾讯云（本地计算，不上传鉴权 Key） -->
-    <section class="tools">
-      <div class="tools-head">
-        <h2>地址生成器</h2>
-        <span class="mini">填域名与鉴权 Key，本地算出带签名的推流 / 播放地址</span>
-      </div>
-
-      <!-- 阿里云 -->
-      <div class="gen-card">
-        <div class="gen-title">阿里云 视频直播</div>
-        <div class="gen-field">
-          <label class="mini">推流域名</label>
-          <input type="text" id="aliPushDomain" placeholder="push.example.com" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">播流域名</label>
-          <input type="text" id="aliPlayDomain" placeholder="aliyunlivepull-sz.example.com" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">AppName</label>
-          <input type="text" id="aliApp" placeholder="VRChat" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">流名 <span class="mini">未勾选机位时使用</span></label>
-          <input type="text" id="aliStream" placeholder="cam01" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">推流鉴权 Key</label>
-          <input type="password" id="aliPushKey" placeholder="推流域名的鉴权 Key" autocomplete="off" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">播流鉴权 Key <span class="mini">留空则与推流 Key 相同</span></label>
-          <input type="password" id="aliPlayKey" placeholder="播流域名的鉴权 Key" autocomplete="off" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">timestamp 偏移（分钟） <span class="mini">0 = 当前时间</span></label>
-          <input type="number" id="aliMinutes" value="0" min="0" step="1" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">机位 <span class="mini">勾选的每个机位各生成一条</span></label>
-          <div class="cam-checks" id="aliCams"></div>
-        </div>
-        <div class="row" style="margin-top: 8px;">
-          <button class="btn small" id="aliGen">生成</button>
-          <button class="btn small primary" id="aliApply">应用到导播台</button>
-          <button class="btn small" id="aliCopy">复制结果</button>
-        </div>
-        <textarea class="gen-out" id="aliOut" rows="9" readonly
-          placeholder="点「生成」后在这里显示推流 / 播放地址"></textarea>
-        <div class="mini" style="margin-top: 4px;">最终过期时间 = 上面的时间 + 播/推流域名在控制台配置的「有效时长」。</div>
-      </div>
-
-      <!-- 腾讯云 -->
-      <div class="gen-card">
-        <div class="gen-title">腾讯云 快直播</div>
-        <div class="gen-field">
-          <label class="mini">推流域名</label>
-          <input type="text" id="txPushDomain" placeholder="push.example.com" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">播流域名</label>
-          <input type="text" id="txPlayDomain" placeholder="livepull.example.com" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">AppName</label>
-          <input type="text" id="txApp" placeholder="live" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">流名 <span class="mini">未勾选机位时使用</span></label>
-          <input type="text" id="txStream" placeholder="cam01" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">推流鉴权 Key</label>
-          <input type="password" id="txPushKey" placeholder="推流域名的鉴权 Key" autocomplete="off" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">播流鉴权 Key <span class="mini">留空则与推流 Key 相同</span></label>
-          <input type="password" id="txPlayKey" placeholder="播流域名的鉴权 Key" autocomplete="off" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">有效期（分钟）</label>
-          <input type="number" id="txMinutes" value="30" min="1" step="1" />
-        </div>
-        <div class="gen-field">
-          <label class="mini">机位 <span class="mini">勾选的每个机位各生成一条</span></label>
-          <div class="cam-checks" id="txCams"></div>
-        </div>
-        <div class="row" style="margin-top: 8px;">
-          <button class="btn small" id="txGen">生成</button>
-          <button class="btn small primary" id="txApply">应用到导播台</button>
-          <button class="btn small" id="txCopy">复制结果</button>
-        </div>
-        <textarea class="gen-out" id="txOut" rows="9" readonly
-          placeholder="点「生成」后在这里显示推流 / 播放地址"></textarea>
-        <div class="mini" style="margin-top: 4px;">txTime 就是过期时间（十六进制），不再叠加域名有效时长。</div>
-      </div>
-    </section>
-
     </div>
   </footer>
 
   <script src="js/config.js"></script>
-  <script src="js/urlgen.js"></script>
   <script src="js/whep.js"></script>
   <script src="js/providers.js"></script>
   <script src="js/frameBuffer.js"></script>

@@ -15,23 +15,21 @@
  * 输出三层就完全不用改。
  */
 
-/** 把模板里的 {cam} {base} {app} {auth} 替换成实际值 */
+/**
+ * 取某路机位的拉流地址：
+ * 优先用「每路机位拉流地址」里为该机位单独填的完整地址（腾讯云 / 阿里云都直接粘原地址）；
+ * 没填则回退到地址模板，把 {cam} {base} {app} 替换成实际值。
+ */
 function buildStreamUrl(cloud, camId, cfg) {
+  var perCam = String((cloud.urls && cloud.urls[camId]) || "").trim();
+  if (perCam) return perCam;
+
   var base = cloud.base !== undefined ? cloud.base : cfg.serverBase;
   var app = cloud.app !== undefined ? cloud.app : cfg.app;
-  var auth = (cloud.authKeys && cloud.authKeys[camId]) || "";
-  var tpl = String(cloud.urlTemplate || "");
-
-  // 阿里云的鉴权串与「AppName/流名」绑定，必须每路机位各填一个，不能共用
-  if (tpl.indexOf("{auth}") >= 0 && !auth) {
-    throw new Error("机位 " + camId + " 还没填鉴权串（在「每路机位鉴权串」里按 cam01=xxx 的格式补上）");
-  }
-
-  return tpl
+  return String(cloud.urlTemplate || "")
     .replace(/\{cam\}/g, camId)
     .replace(/\{base\}/g, base)
-    .replace(/\{app\}/g, app)
-    .replace(/\{auth\}/g, auth);
+    .replace(/\{app\}/g, app);
 }
 
 /** 按 id 取当前生效的拉流通道 */
