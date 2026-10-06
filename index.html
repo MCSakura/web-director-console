@@ -134,13 +134,17 @@
           <span class="status-light" id="outputLight" title="输出状态"></span>
         </div>
         <div class="mini" id="outputInfo">未启用</div>
-        <label class="group-title" style="margin-top: 10px;">成品回传（WHIP 推腾讯云）</label>
+        <label class="group-title" style="margin-top: 10px;">成品回传（WHIP 推流）</label>
         <div class="row">
           <label class="switch"><input type="checkbox" id="pushEnabled" /><span>启用回传</span></label>
           <span class="status-light" id="pushLight" title="回传状态"></span>
         </div>
-        <input type="text" id="pushTokenInput"
-               placeholder="控制台地址生成器 → WebRTC 推流地址（作为 Bearer Token）" />
+        <label class="group-title" style="margin-top: 6px;">回传走哪个云 <span class="mini">用底部生成器一键应用</span></label>
+        <select id="pushCloudSelect"></select>
+        <div id="pushTokenWrap" style="margin-top: 8px;">
+          <input type="text" id="pushTokenInput" placeholder="WebRTC 推流地址（含 txTime）" />
+        </div>
+        <div class="mini" id="pushCloudHint" style="margin-top: 4px;"></div>
         <label class="group-title" style="margin-top: 8px;">回传码率上限 <span class="mini">Mbps</span></label>
         <input type="number" id="pushBitrateInput" min="0.5" max="30" step="0.5" placeholder="如 7" />
         <div class="mini" id="pushInfo">未启用</div>
@@ -152,10 +156,10 @@
         <label class="group-title" style="margin-top: 8px;">地址模板 <span class="mini">用 {cam} 代表机位 ID</span></label>
         <input type="text" id="cloudTemplateInput" placeholder="webrtc://livepull.example.com/live/{cam}" />
         <div id="cloudAuthWrap" style="display: none;">
-          <label class="group-title" style="margin-top: 8px;">每路机位鉴权串 <span class="mini">每行一个：cam01=鉴权串</span></label>
+          <label class="group-title" style="margin-top: 8px;">每路机位鉴权参数 <span class="mini">每行一个：cam01=鉴权参数</span></label>
           <textarea id="cloudAuthInput" class="auth-keys" rows="6"
-            placeholder="cam01=1791280145-0-0-385e486446e5da1ec76b62cff97d21ac&#10;cam02=1791280145-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"></textarea>
-          <div class="mini" style="margin-top: 4px;">阿里云鉴权串按「AppName/流名」单独计算，6 路要各填一个</div>
+            placeholder="cam01=auth_key=1791280145-0-0-385e486446e5da1ec76b62cff97d21ac&#10;cam02=txSecret=8ba8...&amp;txTime=6AC4D124"></textarea>
+          <div class="mini" style="margin-top: 4px;">填整串鉴权参数（不含 ?）。阿里云是 auth_key=…，腾讯云是 txSecret=…&amp;txTime=…；鉴权按流名单独计算，6 路各一个</div>
         </div>
         <div class="row" style="margin-top: 8px;">
           <button id="btnSaveCloud" class="btn small primary">保存并重连</button>
@@ -199,7 +203,7 @@
           <div class="step-body">
             <div class="step-title">推流准备（6 路机位）</div>
             <p>用 OBS 或其他推流工具，把 6 路画面分别推到<strong>腾讯云快直播</strong>或<strong>阿里云视频直播</strong>，流名依次为 <code>cam01</code>、<code>cam02</code>…<code>cam06</code>；AppName 按你的推流配置填（腾讯云示例用 <code>live</code>）。推荐用 <strong>WHIP（WebRTC）推流</strong>，可免转码费；用 RTMP 推流则把 B 帧设为 0 以免去 B 帧转码费。</p>
-            <p class="mini">播流地址不用去控制台一个个生成：页面底部有<strong>地址生成器</strong>（阿里云 / 腾讯云各一个），填入推流域名、播流域名、AppName、鉴权 Key，勾选需要的机位，就能一次算出全部带签名的推流/播放地址——阿里云的鉴权串是按流名单算的，这样 6 路一次就齐了。把生成结果里的鉴权串按 <code>cam01=xxx</code> 填进右侧「每路机位鉴权串」，点「保存并重连」即可。</p>
+            <p class="mini">播流地址不用去控制台一个个生成：页面底部有<strong>地址生成器</strong>（阿里云 / 腾讯云各一个），填入推流域名、播流域名、AppName、鉴权 Key，勾选需要的机位，点<strong>「应用到导播台」</strong>即可——它会自动把地址模板和每路机位的鉴权参数写进「拉流通道」并切换到对应云（鉴权按流名单算，这样才能一次配齐 6 路）。</p>
           </div>
         </div>
 
@@ -232,7 +236,7 @@
           <div class="step-body">
             <div class="step-title">成品输出</div>
             <p><strong>虚拟摄像头</strong>：给本机会议软件当摄像头用。<br/>
-            <strong>回传腾讯云</strong>：勾选「启用回传」，把控制台<strong>地址生成器</strong>生成的 WebRTC 推流地址（流名 <code>pgm</code>，开头若为 <code>rtmp://</code> 改成 <code>webrtc://</code>）粘进输入框；码率用「回传码率上限」调（1080p60 建议 6.5–7 Mbps）。</p>
+            <strong>回传</strong>：先在上方「回传走哪个云」选腾讯云或阿里云，勾选「启用回传」。然后在底部<strong>对应云</strong>的地址生成器里点「应用到导播台」，pgm 推流地址会自动写入——腾讯云走「推流地址」（作为 streamurl 参数），阿里云则直接把 WHIP 端点（artc 换成 https）写进服务地址。码率用「回传码率上限」调（1080p60 建议 6.5–7 Mbps）。</p>
           </div>
         </div>
 
@@ -326,7 +330,8 @@
           <div class="cam-checks" id="aliCams"></div>
         </div>
         <div class="row" style="margin-top: 8px;">
-          <button class="btn small primary" id="aliGen">生成</button>
+          <button class="btn small" id="aliGen">生成</button>
+          <button class="btn small primary" id="aliApply">应用到导播台</button>
           <button class="btn small" id="aliCopy">复制结果</button>
         </div>
         <textarea class="gen-out" id="aliOut" rows="9" readonly
@@ -370,7 +375,8 @@
           <div class="cam-checks" id="txCams"></div>
         </div>
         <div class="row" style="margin-top: 8px;">
-          <button class="btn small primary" id="txGen">生成</button>
+          <button class="btn small" id="txGen">生成</button>
+          <button class="btn small primary" id="txApply">应用到导播台</button>
           <button class="btn small" id="txCopy">复制结果</button>
         </div>
         <textarea class="gen-out" id="txOut" rows="9" readonly

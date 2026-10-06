@@ -134,6 +134,7 @@ class OutputManager {
 
   async _startWhipPush() {
     const out = this.config.output;
+    const mode = out.whipPushMode || "streamurl";
 
     if (!out.whipPushServer) {
       this.pushStatus = "error";
@@ -141,9 +142,10 @@ class OutputManager {
       this._emitPush();
       return;
     }
-    if (!out.whipPushToken) {
+    // direct 模式下服务地址本身就是推流端点（地址里已带鉴权），不需要额外的推流地址
+    if (mode !== "direct" && !out.whipPushToken) {
       this.pushStatus = "error";
-      this.pushInfo = "回传失败：请先填写腾讯云 WebRTC 推流地址（Bearer Token）";
+      this.pushInfo = "回传失败：请先填写 WebRTC 推流地址";
       this._emitPush();
       return;
     }
@@ -204,12 +206,20 @@ class OutputManager {
     await pc.setLocalDescription(offer);
     await waitIceGathering(pc, 2000);
 
-    // 腾讯云 WHIP 服务器只允许 content-type 一个请求头（Access-Control-Allow-Headers 里没有
-    // authorization），用 Authorization: Bearer 会触发跨域预检失败（浏览器报 Failed to fetch）。
-    // 因此把推流地址作为 streamurl 查询参数传递，预检只需放行 content-type 即可通过。
-    const server = this.config.output.whipPushServer;
-    const url = server + (server.indexOf("?") >= 0 ? "&" : "?") +
-      "streamurl=" + encodeURIComponent(this.config.output.whipPushToken);
+    // 两种回传模式：
+    //   streamurl（腾讯云）—— WHIP 服务地址固定，只允许 content-type 请求头
+    //                        （Access-Control-Allow-Headers 里没有 authorization），
+    //                        所以不用 Authorization: Bearer，而是把推流地址作为
+    //                        ?streamurl= 查询参数传递，预检只需放行 content-type。
+    //   direct（阿里云）   —— 服务地址本身就是端点（artc:// 推流地址换成 https://），
+    //                        鉴权已含在地址里，直接 POST，不再追加参数。
+    const out = this.config.output;
+    const mode = out.whipPushMode || "streamurl";
+    let url = out.whipPushServer;
+    if (mode !== "direct") {
+      url += (url.indexOf("?") >= 0 ? "&" : "?") +
+        "streamurl=" + encodeURIComponent(out.whipPushToken);
+    }
 
     const resp = await fetch(url, {
       method: "POST",

@@ -38,6 +38,9 @@
     outputInfo: $("outputInfo"),
     pushEnabled: $("pushEnabled"),
     pushTokenInput: $("pushTokenInput"),
+    pushCloudSelect: $("pushCloudSelect"),
+    pushTokenWrap: $("pushTokenWrap"),
+    pushCloudHint: $("pushCloudHint"),
     pushBitrateInput: $("pushBitrateInput"),
     pushLight: $("pushLight"),
     pushInfo: $("pushInfo"),
@@ -94,7 +97,8 @@
       saved.forEach((sc) => {
         const target = getCloudById(CFG, sc.id);
         if (!target) return;
-        ["urlTemplate", "sdkUrl", "licenseUrl", "licenseKey"].forEach((k) => {
+        ["urlTemplate", "sdkUrl", "licenseUrl", "licenseKey",
+         "whipPushServer", "whipPushMode"].forEach((k) => {
           if (typeof sc[k] === "string") target[k] = sc[k];
         });
         if (sc.authKeys && typeof sc.authKeys === "object") {
@@ -151,6 +155,22 @@
     ui.cloudHint.textContent = "当前生效：" + c.name + "（取流方式 " + c.provider + "）";
   }
   refreshCloudEditor();
+
+  /** 把各通道的可编辑字段写入 localStorage（保存通道、生成器应用后都要调） */
+  function saveClouds() {
+    localStorage.setItem(CLOUDS_STORAGE_KEY, JSON.stringify(
+      CFG.clouds.map((x) => ({
+        id: x.id,
+        urlTemplate: x.urlTemplate,
+        sdkUrl: x.sdkUrl,
+        licenseUrl: x.licenseUrl,
+        licenseKey: x.licenseKey,
+        authKeys: x.authKeys,
+        whipPushServer: x.whipPushServer,
+        whipPushMode: x.whipPushMode
+      }))
+    ));
+  }
 
   // ---------- B站弹幕：优先使用浏览器里保存的房间号、网关地址与登录 Cookie ----------
   const DM_ROOM_KEY = "director.danmakuRoom";
@@ -223,6 +243,55 @@
   if (savedPushToken !== null) CFG.output.whipPushToken = savedPushToken;
   ui.pushTokenInput.value = CFG.output.whipPushToken || "";
 
+  // 回传走哪个云：决定用哪个通道的 WHIP 服务地址与推送方式（streamurl / direct）
+  const PUSH_CLOUD_KEY = "director.pushCloud";
+  const pushClouds = (CFG.clouds || []).filter((c) => !!c.whipPushMode);
+  pushClouds.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.name;
+    ui.pushCloudSelect.appendChild(opt);
+  });
+
+  function currentPushCloud() {
+    return getCloudById(CFG, ui.pushCloudSelect.value) || pushClouds[0] || null;
+  }
+
+  /** 把选中通道的 WHIP 服务地址 / 模式同步到 CFG.output，并刷新界面提示 */
+  function syncPushCloudToOutput() {
+    const c = currentPushCloud();
+    if (!c) {
+      ui.pushCloudHint.textContent = "没有可用的回传通道";
+      return;
+    }
+    CFG.output.whipPushServer = c.whipPushServer || "";
+    CFG.output.whipPushMode = c.whipPushMode || "streamurl";
+
+    // direct 模式（阿里云）：端点本身就是推流地址，地址里已带鉴权，无需再填 token
+    const direct = CFG.output.whipPushMode === "direct";
+    ui.pushTokenWrap.style.display = direct ? "none" : "";
+    ui.pushCloudHint.textContent = direct
+      ? "当前：" + c.name + "（端点即推流地址，由「地址生成器 → 应用到导播台」自动写入）"
+      : "当前：" + c.name + "（需填 WebRTC 推流地址）";
+  }
+
+  const savedPushCloud = localStorage.getItem(PUSH_CLOUD_KEY);
+  if (savedPushCloud && getCloudById(CFG, savedPushCloud)) {
+    ui.pushCloudSelect.value = savedPushCloud;
+  }
+  syncPushCloudToOutput();
+
+  ui.pushCloudSelect.addEventListener("change", async () => {
+    localStorage.setItem(PUSH_CLOUD_KEY, ui.pushCloudSelect.value);
+    syncPushCloudToOutput();
+    const c = currentPushCloud();
+    log("回传通道已切换为「" + (c ? c.name : "无") + "」，地址过期时请到「地址生成器」重新生成并应用", "warn");
+    if (ui.pushEnabled.checked) {
+      await mixer.resume();
+      await output.setPushEnabled(true);
+    }
+  });
+
   // 回传码率上限（Mbps）：存浏览器里，改完立即重连生效
   const PUSH_BITRATE_KEY = "director.pushBitrateMbps";
   const savedBitrate = parseFloat(localStorage.getItem(PUSH_BITRATE_KEY));
@@ -239,14 +308,14 @@
     const on = ui.pushEnabled.checked;
     CFG.output.whipPushToken = ui.pushTokenInput.value.trim();
     localStorage.setItem(PUSH_TOKEN_KEY, CFG.output.whipPushToken);
-    log(on ? "开启成品回传（WHIP 推腾讯云）…" : "关闭成品回传");
+    log(on ? "开启成品回传（WHIP）…" : "关闭成品回传");
     await output.setPushEnabled(on);
   });
 
   ui.pushTokenInput.addEventListener("change", async () => {
     CFG.output.whipPushToken = ui.pushTokenInput.value.trim();
     localStorage.setItem(PUSH_TOKEN_KEY, CFG.output.whipPushToken);
-    log("已保存腾讯云 WHIP 推流地址");
+    log("已保存 WHIP 推流地址");
     // 回传已开启时，用新地址重连一次，避免继续沿用旧的（可能已过期的）token
     if (ui.pushEnabled.checked) {
       await mixer.resume();
@@ -741,16 +810,7 @@
     }
     CFG.activeCloud = c.id;
     localStorage.setItem(ACTIVE_CLOUD_KEY, c.id);
-    localStorage.setItem(CLOUDS_STORAGE_KEY, JSON.stringify(
-      CFG.clouds.map((x) => ({
-        id: x.id,
-        urlTemplate: x.urlTemplate,
-        sdkUrl: x.sdkUrl,
-        licenseUrl: x.licenseUrl,
-        licenseKey: x.licenseKey,
-        authKeys: x.authKeys
-      }))
-    ));
+    saveClouds();
 
     await resetAllConnections();
     refreshCloudEditor();
@@ -967,6 +1027,17 @@
       lines.push("【播放地址】");
       res.play.forEach((x) => lines.push(x.label + "：" + x.url));
     }
+    const cams = Object.keys(res.authKeys || {});
+    if (cams.length) {
+      if (lines.length) lines.push("");
+      lines.push("【每路机位鉴权参数】（可粘贴到「拉流通道 → 每路机位鉴权参数」）");
+      cams.forEach((cam) => lines.push(cam + "=" + res.authKeys[cam]));
+    }
+    if (res.whipUrl) {
+      if (lines.length) lines.push("");
+      lines.push("【回传 pgm 推流地址】");
+      lines.push(res.whipUrl);
+    }
     return lines.join("\n");
   }
 
@@ -989,10 +1060,11 @@
 
   /**
    * 初始化一个生成器卡片。
-   * @param {string} prefix 元素 id 前缀（ali / tx）
+   * @param {string} prefix   元素 id 前缀（ali / tx）
+   * @param {string} cloudId  对应的拉流通道 id（aliyun / tencent）
    * @param {Function} buildFn buildAliyunUrls 或 buildTencentUrls
    */
-  function setupUrlGenerator(prefix, buildFn) {
+  function setupUrlGenerator(prefix, cloudId, buildFn) {
     const el = (n) => $(prefix + n);
 
     // 机位复选框：从当前机位列表生成，勾选哪个就为哪个机位生成地址
@@ -1007,32 +1079,88 @@
       camsBox.appendChild(lab);
     });
 
-    el("Gen").addEventListener("click", () => {
-      const out = el("Out");
+    /** 按当前表单生成一组地址 */
+    function build() {
       const streams = Array.prototype.slice
         .call(camsBox.querySelectorAll("input:checked"))
         .map((cb) => cb.value);
+      return buildFn({
+        pushDomain: el("PushDomain").value,
+        playDomain: el("PlayDomain").value,
+        app: el("App").value,
+        stream: el("Stream").value,
+        pushKey: el("PushKey").value,
+        playKey: el("PlayKey").value,
+        minutes: el("Minutes").value,
+        streams: streams
+      });
+    }
+
+    el("Gen").addEventListener("click", () => {
+      const out = el("Out");
       try {
-        out.value = formatGenResult(buildFn({
-          pushDomain: el("PushDomain").value,
-          playDomain: el("PlayDomain").value,
-          app: el("App").value,
-          stream: el("Stream").value,
-          pushKey: el("PushKey").value,
-          playKey: el("PlayKey").value,
-          minutes: el("Minutes").value,
-          streams: streams
-        }));
+        out.value = formatGenResult(build());
       } catch (err) {
         out.value = "生成失败：" + (err && err.message ? err.message : String(err));
       }
     });
 
     el("Copy").addEventListener("click", () => copyFromTextarea(el("Out")));
+
+    // 一键把生成结果写进导播台：拉流通道（模板 + 每路鉴权），并在回传选中本云时一并写入 pgm 推流地址
+    el("Apply").addEventListener("click", async () => {
+      const cloud = getCloudById(CFG, cloudId);
+      if (!cloud) {
+        log("找不到拉流通道 " + cloudId, "error");
+        return;
+      }
+
+      let res;
+      try {
+        res = build();
+      } catch (err) {
+        log("生成失败：" + (err && err.message ? err.message : String(err)), "error");
+        return;
+      }
+
+      // 1) 拉流通道：地址模板 + 每路机位的鉴权参数
+      cloud.urlTemplate = res.template;
+      cloud.authKeys = Object.assign({}, cloud.authKeys, res.authKeys);
+      CFG.activeCloud = cloud.id;
+      ui.cloudSelect.value = cloud.id;
+      localStorage.setItem(ACTIVE_CLOUD_KEY, cloud.id);
+
+      // 2) 回传：只有「回传走哪个云」正好选的是本云时才写入，避免互相覆盖
+      let pushApplied = false;
+      if (ui.pushCloudSelect.value === cloud.id) {
+        const mode = cloud.whipPushMode || "streamurl";
+        if (mode === "direct") {
+          // 阿里云：WHIP 端点就是推流地址（artc:// 换成 https://），鉴权已在地址里
+          cloud.whipPushServer = String(res.whipUrl).replace(/^artc:\/\//, "https://");
+          CFG.output.whipPushToken = "";
+        } else {
+          CFG.output.whipPushToken = res.whipUrl;
+        }
+        localStorage.setItem(PUSH_TOKEN_KEY, CFG.output.whipPushToken);
+        ui.pushTokenInput.value = CFG.output.whipPushToken;
+        syncPushCloudToOutput();
+        pushApplied = true;
+      }
+
+      // 3) 落盘 + 刷新界面 + 断开旧连接（地址变了必须重连）
+      saveClouds();
+      await resetAllConnections();
+      refreshCloudEditor();
+
+      const camCount = Object.keys(res.authKeys || {}).length;
+      log("已应用到「" + cloud.name + "」：拉流模板 + " + camCount + " 路鉴权参数" +
+        (pushApplied ? "；回传已写入 " + res.whipUrl.split("?")[0] : "（回传未选中本云，未改动）"), "ok");
+      log("请重新点击「连接全部机位」", "ok");
+    });
   }
 
-  setupUrlGenerator("ali", buildAliyunUrls);
-  setupUrlGenerator("tx", buildTencentUrls);
+  setupUrlGenerator("ali", "aliyun", buildAliyunUrls);
+  setupUrlGenerator("tx", "tencent", buildTencentUrls);
 
   // ---------- 初始化 ----------
   const refCam = engine.reference;

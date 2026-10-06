@@ -185,6 +185,11 @@ function resolveStreams(selected, fallback) {
  *   txTime   = 过期时间的十六进制
  *   txSecret = md5(鉴权KEY + 流名 + txTime)
  * 推流用推流域名的 KEY，播放用播流域名的 KEY。
+ *
+ * 返回里除逐条地址外，还带上可直接写进导播台的：
+ *   template  —— 拉流通道地址模板（含 {cam} / {auth}）
+ *   authKeys  —— 每路机位的鉴权参数（整串，如 txSecret=xxx&txTime=xxx）
+ *   whipUrl   —— 成品回传（pgm 推流）地址
  */
 function buildTencentUrls(p) {
   var pushDomain = normalizeDomain(p.pushDomain);
@@ -194,23 +199,37 @@ function buildTencentUrls(p) {
   var playKey = String(p.playKey || "").trim() || pushKey;
   var minutes = Number(p.minutes) > 0 ? Number(p.minutes) : 30;
   var streams = resolveStreams(p.streams, p.stream);
+  var pgm = normalizePathPart(p.whipStream || "pgm");
 
   if (!pushDomain || !playDomain || !app) throw new Error("请填写推流域名、播流域名和 AppName");
 
   var txTime = Math.floor(Date.now() / 1000 + minutes * 60).toString(16).toUpperCase();
-  var out = { push: [], play: [] };
+
+  /** 腾讯云 txSecret = md5(KEY + 流名 + txTime) */
+  function query(key, stream) {
+    return key ? "txSecret=" + md5Hex(key + stream + txTime) + "&txTime=" + txTime : "";
+  }
+
+  var out = { push: [], play: [], template: "", authKeys: {}, whipUrl: "" };
 
   streams.forEach(function (s) {
     var stream = normalizePathPart(s);
     var path = app + "/" + stream;
-    var ps = pushKey ? "?txSecret=" + md5Hex(pushKey + stream + txTime) + "&txTime=" + txTime : "";
-    var ls = playKey ? "?txSecret=" + md5Hex(playKey + stream + txTime) + "&txTime=" + txTime : "";
+    var pq = query(pushKey, stream);
+    var lq = query(playKey, stream);
 
-    out.push.push({ label: "RTMP 推流", url: "rtmp://" + pushDomain + "/" + path + ps });
-    out.push.push({ label: "快直播 WebRTC 推流", url: "webrtc://" + pushDomain + "/" + path + ps });
-    out.play.push({ label: "快直播 WebRTC 播放", url: "webrtc://" + playDomain + "/" + path + ls });
-    out.play.push({ label: "FLV 播放", url: "http://" + playDomain + "/" + path + ".flv" + ls });
+    out.push.push({ label: "RTMP 推流", url: "rtmp://" + pushDomain + "/" + path + (pq ? "?" + pq : "") });
+    out.push.push({ label: "快直播 WebRTC 推流", url: "webrtc://" + pushDomain + "/" + path + (pq ? "?" + pq : "") });
+    out.play.push({ label: "快直播 WebRTC 播放", url: "webrtc://" + playDomain + "/" + path + (lq ? "?" + lq : "") });
+    out.play.push({ label: "FLV 播放", url: "http://" + playDomain + "/" + path + ".flv" + (lq ? "?" + lq : "") });
+
+    if (lq) out.authKeys[stream] = lq;
   });
+
+  out.template = "webrtc://" + playDomain + "/" + app + "/{cam}" + (playKey ? "?{auth}" : "");
+
+  var pgmQuery = query(pushKey, pgm);
+  out.whipUrl = "webrtc://" + pushDomain + "/" + app + "/" + pgm + (pgmQuery ? "?" + pgmQuery : "");
 
   return out;
 }
@@ -234,31 +253,38 @@ function buildAliyunUrls(p) {
   var playKey = String(p.playKey || "").trim() || pushKey;
   var minutes = Number(p.minutes) > 0 ? Number(p.minutes) : 0;
   var streams = resolveStreams(p.streams, p.stream);
+  var pgm = normalizePathPart(p.whipStream || "pgm");
 
   if (!pushDomain || !playDomain || !app) throw new Error("请填写推流域名、播流域名和 AppName");
 
   var timestamp = Math.floor(Date.now() / 1000 + minutes * 60);
-  var out = { push: [], play: [] };
+  var out = { push: [], play: [], template: "", authKeys: {}, whipUrl: "" };
 
-  function authKey(uri, key) {
+  /** 阿里云 auth_key = timestamp-rand-uid-md5(URI-timestamp-rand-uid-KEY) */
+  function query(uri, key) {
     if (!key) return "";
-    var hash = md5Hex(uri + "-" + timestamp + "-0-0-" + key);
-    return "auth_key=" + timestamp + "-0-0-" + hash;
+    return "auth_key=" + timestamp + "-0-0-" + md5Hex(uri + "-" + timestamp + "-0-0-" + key);
   }
 
   streams.forEach(function (s) {
     var stream = normalizePathPart(s);
     var uri = "/" + app + "/" + stream;
+    var pq = query(uri, pushKey);
+    var lq = query(uri, playKey);
+    var lqFlv = query(uri + ".flv", playKey);
 
-    var pushAuth = authKey(uri, pushKey);
-    var playAuth = authKey(uri, playKey);
-    var playAuthFlv = authKey(uri + ".flv", playKey);
+    out.push.push({ label: "RTMP 推流", url: "rtmp://" + pushDomain + uri + (pq ? "?" + pq : "") });
+    out.push.push({ label: "RTS 推流", url: "artc://" + pushDomain + uri + (pq ? "?" + pq : "") });
+    out.play.push({ label: "RTS 播放", url: "artc://" + playDomain + uri + (lq ? "?" + lq : "") });
+    out.play.push({ label: "FLV 播放", url: "http://" + playDomain + uri + ".flv" + (lqFlv ? "?" + lqFlv : "") });
 
-    out.push.push({ label: "RTMP 推流", url: "rtmp://" + pushDomain + uri + (pushAuth ? "?" + pushAuth : "") });
-    out.push.push({ label: "RTS 推流", url: "artc://" + pushDomain + uri + (pushAuth ? "?" + pushAuth : "") });
-    out.play.push({ label: "RTS 播放", url: "artc://" + playDomain + uri + (playAuth ? "?" + playAuth : "") });
-    out.play.push({ label: "FLV 播放", url: "http://" + playDomain + uri + ".flv" + (playAuthFlv ? "?" + playAuthFlv : "") });
+    if (lq) out.authKeys[stream] = lq;
   });
+
+  out.template = "artc://" + playDomain + "/" + app + "/{cam}" + (playKey ? "?{auth}" : "");
+
+  var pgmQuery = query("/" + app + "/" + pgm, pushKey);
+  out.whipUrl = "artc://" + pushDomain + "/" + app + "/" + pgm + (pgmQuery ? "?" + pgmQuery : "");
 
   return out;
 }

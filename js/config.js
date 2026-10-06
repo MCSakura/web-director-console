@@ -26,9 +26,11 @@ window.DIRECTOR_CONFIG = {
    *   "tcplayer"  —— 腾讯云快直播 LEB（加载 TCPlayer，从 video.srcObject 取原生轨道）
    *   "aliplayer" —— 阿里云视频直播（加载 Aliplayer Web SDK，支持 RTS 超低延时 / FLV / HLS）
    *
-   * urlTemplate 支持三个占位符：
-   *   {cam}  机位 ID      {base}  该通道的 base（缺省用全局 serverBase）
-   *   {app}  应用名（缺省用全局 app）
+   * urlTemplate 支持四个占位符：
+   *   {cam}   机位 ID      {base}  该通道的 base（缺省用全局 serverBase）
+   *   {app}   应用名（缺省用全局 app）
+   *   {auth}  该机位的鉴权参数（整串，不含 ?），按机位在 authKeys 里取，
+   *           例如 auth_key=1791280145-0-0-385e... 或 txSecret=8ba8...&txTime=6AC4D124
    *
    * 注意：带防盗链的地址会过期（腾讯云 txTime / 阿里云 auth_key），
    * 换场次时在设置里更新模板即可。
@@ -51,7 +53,13 @@ window.DIRECTOR_CONFIG = {
       // TCPlayer 5.x 需要 License；4.8.0 免 License（官方已提示该版本即将下线）
       sdkUrl: "https://web.sdk.qcloud.com/player/tcplayer/release/v4.8.0/tcplayer.v4.8.0.min.js",
       licenseUrl: "",
-      licenseKey: ""
+      licenseKey: "",
+      /**
+       * 成品回传（WHIP 推流）走这个云时用的推流服务地址。
+       * 腾讯云的 WHIP 服务地址是固定的，推流地址要作为 ?streamurl= 参数传过去（mode = streamurl）。
+       */
+      whipPushServer: "https://webrtcpush.tlivewebrtcpush.com/webrtc/v2/whip",
+      whipPushMode: "streamurl"
     },
     {
       id: "aliyun",
@@ -59,23 +67,19 @@ window.DIRECTOR_CONFIG = {
       provider: "aliplayer",
       /**
        * 播流地址。artc:// 为超低延时直播（需在控制台开启「超低延时直播」并对播流域名配 HTTPS）；
-       * 若走标准直播，可换成 http(s)://播流域名/VRChat/{cam}.flv（或 .m3u8）。
-       * 注意：AppName 这里是 VRChat（不是 live）。
-       * {auth} 会在下面 authKeys 里按机位取鉴权串后替换。
+       * 若走标准直播，可换成 http(s)://播流域名/live/{cam}.flv（或 .m3u8）。
+       * {auth} 按机位在下面 authKeys 里取鉴权参数后替换。
        */
-      urlTemplate: "artc://aliyunlivepull-sz.mcsakura.cn/VRChat/{cam}?auth_key={auth}",
+      urlTemplate: "artc://aliyunlivepull-sz.mcsakura.cn/live/{cam}?{auth}",
       /**
-       * 每路机位各自的鉴权串。
+       * 每路机位各自的鉴权参数（整串，不含 ?），格式 auth_key=1791280145-0-0-385e...
        *
        * 阿里云 URL 鉴权的 md5hash 是按「AppName/流名」算的
-       *（sstring = "URI-timestamp-rand-uid-PrivateKey"），所以 6 路机位必须各有一个鉴权串，
+       *（sstring = "URI-timestamp-rand-uid-PrivateKey"），所以 6 路机位必须各有一个，
        * 不能像腾讯云那样 6 路共用同一个。
        *
-       * 取法：控制台「直播地址生成器」里把 StreamName 依次填 cam01…cam06 生成播流地址，
-       * 把每条地址里 ?auth_key= 后面那串（形如 1791280145-0-0-385e486446e5da1ec76b62cff97d21ac）填到这里。
-       *
-       * 这里是临时令牌，换场次会失效，所以默认留空：
-       * 推荐直接在页面「每路机位鉴权串」里按 cam01=xxx 的格式粘贴（存在浏览器本地，不会进仓库）。
+       * auth_key 是临时令牌，换场次会失效，所以默认留空：
+       * 推荐用页面底部「地址生成器」勾选机位生成后，点「应用到导播台」自动写入。
        */
       authKeys: {
         cam01: "",
@@ -85,6 +89,13 @@ window.DIRECTOR_CONFIG = {
         cam05: "",
         cam06: ""
       },
+      /**
+       * 成品回传走阿里云时：WHIP 端点就是推流地址本身（把 artc:// 换成 https://），
+       * 地址里已经带了 auth_key，不需要再传 streamurl 参数（mode = direct）。
+       * 值由「地址生成器 → 应用到导播台」自动写入。
+       */
+      whipPushServer: "",
+      whipPushMode: "direct",
       // 阿里云 Web 播放器 SDK（RTS 超低延时已作为插件内置）
       sdkUrl: "https://g.alicdn.com/apsara-media-box/imp-web-player/2.28.3/aliplayer-min.js"
     }
@@ -147,18 +158,25 @@ window.DIRECTOR_CONFIG = {
     height: 1080,
     fps: 60,
     /**
-     * 成品回传（可选，页面「成品输出」里有开关）：WHIP 推到腾讯云快直播。
+     * 成品回传（可选，页面「成品输出」里有开关）：WHIP 推到云上。
      *
-     * 浏览器不能推/拉 RTMP，所以回传统一走 WHIP；落到腾讯云后由 pgm.html 用
-     * 快直播 WebRTC 拉流观看（流名 pgm）。也可自行用 RTMP/FLV 拉。
+     * 浏览器不能推/拉 RTMP，所以回传统一走 WHIP；落地后由 pgm.html 拉流观看（流名 pgm）。
+     * 推哪个云由页面「成品输出 → 回传」的下拉框决定，选哪个云就用那个云的
+     * whipPushServer / whipPushMode（见上面 clouds 里各通道的配置）。
      *
      * 若你选择「OBS 采集本页面后由 OBS 自己推」，则不需要开启此项。
      */
     whipPushServer: "https://webrtcpush.tlivewebrtcpush.com/webrtc/v2/whip",
     /**
-     * 控制台「地址生成器」生成的 WebRTC 推流地址（含 txTime，会过期，换场次要更新）。
-     * 注意：腾讯云 WHIP 的跨域策略不放行 authorization 头，因此不用 Bearer 头，
-     * 而是以 ?streamurl= 查询参数发送（同样能通过鉴权）。
+     * 回传服务地址的用法：
+     *   "streamurl"（腾讯云）—— 服务地址固定，把推流地址作为 ?streamurl= 参数传过去；
+     *                          注意腾讯云 WHIP 跨域不放行 authorization 头，所以不用 Bearer 头。
+     *   "direct"（阿里云）   —— 服务地址本身就是端点（artc:// 推流地址把协议换成 https://），
+     *                          地址里已带 auth_key，不再追加参数。
+     */
+    whipPushMode: "streamurl",
+    /**
+     * 推流地址（仅 streamurl 模式需要；含 txTime / auth_key，会过期，换场次要重新生成）。
      */
     whipPushToken: "",
     /**
