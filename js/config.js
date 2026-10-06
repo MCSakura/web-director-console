@@ -59,10 +59,32 @@ window.DIRECTOR_CONFIG = {
       provider: "aliplayer",
       /**
        * 播流地址。artc:// 为超低延时直播（需在控制台开启「超低延时直播」并对播流域名配 HTTPS）；
-       * 若走标准直播，可换成 http(s)://播流域名/live/{cam}.flv（或 .m3u8）。
-       * 带防盗链时地址里有 auth_key，会过期，换场次在这里更新即可。
+       * 若走标准直播，可换成 http(s)://播流域名/VRChat/{cam}.flv（或 .m3u8）。
+       * 注意：AppName 这里是 VRChat（不是 live）。
+       * {auth} 会在下面 authKeys 里按机位取鉴权串后替换。
        */
-      urlTemplate: "artc://播流域名/live/{cam}?auth_key=鉴权串",
+      urlTemplate: "artc://aliyunlivepull-sz.mcsakura.cn/VRChat/{cam}?auth_key={auth}",
+      /**
+       * 每路机位各自的鉴权串。
+       *
+       * 阿里云 URL 鉴权的 md5hash 是按「AppName/流名」算的
+       *（sstring = "URI-timestamp-rand-uid-PrivateKey"），所以 6 路机位必须各有一个鉴权串，
+       * 不能像腾讯云那样 6 路共用同一个。
+       *
+       * 取法：控制台「直播地址生成器」里把 StreamName 依次填 cam01…cam06 生成播流地址，
+       * 把每条地址里 ?auth_key= 后面那串（形如 1791280145-0-0-385e486446e5da1ec76b62cff97d21ac）填到这里。
+       *
+       * 这里是临时令牌，换场次会失效，所以默认留空：
+       * 推荐直接在页面「每路机位鉴权串」里按 cam01=xxx 的格式粘贴（存在浏览器本地，不会进仓库）。
+       */
+      authKeys: {
+        cam01: "",
+        cam02: "",
+        cam03: "",
+        cam04: "",
+        cam05: "",
+        cam06: ""
+      },
       // 阿里云 Web 播放器 SDK（RTS 超低延时已作为插件内置）
       sdkUrl: "https://g.alicdn.com/apsara-media-box/imp-web-player/2.28.3/aliplayer-min.js"
     }

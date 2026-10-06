@@ -209,6 +209,14 @@ select:focus {
 /* 占位符文字：与页面次要文字同色系，不刺眼 */
 input::placeholder, textarea::placeholder { color: #5c6b80; }
 
+/* 每路机位鉴权串输入框：等宽字体便于核对长串，只允许纵向拉伸 */
+.auth-keys {
+  resize: vertical;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 
 /* 文件选择（台标）：按钮跟随页面按钮风格 */

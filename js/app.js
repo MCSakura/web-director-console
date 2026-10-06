@@ -47,6 +47,8 @@
     serverHint: $("serverHint"),
     cloudSelect: $("cloudSelect"),
     cloudTemplateInput: $("cloudTemplateInput"),
+    cloudAuthWrap: $("cloudAuthWrap"),
+    cloudAuthInput: $("cloudAuthInput"),
     btnSaveCloud: $("btnSaveCloud"),
     btnResetCloud: $("btnResetCloud"),
     cloudHint: $("cloudHint"),
@@ -95,6 +97,9 @@
         ["urlTemplate", "sdkUrl", "licenseUrl", "licenseKey"].forEach((k) => {
           if (typeof sc[k] === "string") target[k] = sc[k];
         });
+        if (sc.authKeys && typeof sc.authKeys === "object") {
+          target.authKeys = Object.assign({}, target.authKeys, sc.authKeys);
+        }
       });
     }
     const savedActive = localStorage.getItem(ACTIVE_CLOUD_KEY);
@@ -113,6 +118,25 @@
     return getCloudById(CFG, ui.cloudSelect.value) || (CFG.clouds || [])[0] || null;
   }
 
+  /** 把某通道的鉴权串对象转成多行文本（cam01=xxx），供输入框显示 */
+  function formatAuthKeys(cloud) {
+    const keys = cloud.authKeys || {};
+    return (CFG.cameras || []).map((c) => c.id + "=" + (keys[c.id] || "")).join("\n");
+  }
+
+  /** 解析多行「cam01=鉴权串」文本；没有等号的行忽略 */
+  function parseAuthKeys(text) {
+    const out = {};
+    String(text || "").split("\n").forEach((raw) => {
+      const line = raw.trim();
+      if (!line) return;
+      const eq = line.indexOf("=");
+      if (eq <= 0) return;
+      out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+    });
+    return out;
+  }
+
   function refreshCloudEditor() {
     const c = currentCloud();
     if (!c) {
@@ -120,6 +144,10 @@
       return;
     }
     ui.cloudTemplateInput.value = c.urlTemplate || "";
+    // 只有模板里用了 {auth} 的通道（如阿里云）才需要每路机位各填一个鉴权串
+    const needAuth = /\{auth\}/.test(c.urlTemplate || "");
+    ui.cloudAuthWrap.style.display = needAuth ? "" : "none";
+    if (needAuth) ui.cloudAuthInput.value = formatAuthKeys(c);
     ui.cloudHint.textContent = "当前生效：" + c.name + "（取流方式 " + c.provider + "）";
   }
   refreshCloudEditor();
@@ -707,6 +735,10 @@
     }
 
     c.urlTemplate = tpl;
+    // 模板里用了 {auth} 的通道（如阿里云）需要保存每路机位的鉴权串
+    if (/\{auth\}/.test(tpl)) {
+      c.authKeys = Object.assign({}, c.authKeys, parseAuthKeys(ui.cloudAuthInput.value));
+    }
     CFG.activeCloud = c.id;
     localStorage.setItem(ACTIVE_CLOUD_KEY, c.id);
     localStorage.setItem(CLOUDS_STORAGE_KEY, JSON.stringify(
@@ -715,12 +747,24 @@
         urlTemplate: x.urlTemplate,
         sdkUrl: x.sdkUrl,
         licenseUrl: x.licenseUrl,
-        licenseKey: x.licenseKey
+        licenseKey: x.licenseKey,
+        authKeys: x.authKeys
       }))
     ));
 
     await resetAllConnections();
     refreshCloudEditor();
+
+    // 提醒还没填鉴权串的机位，避免连上后一片失败
+    if (/\{auth\}/.test(tpl)) {
+      const missing = (CFG.cameras || [])
+        .map((x) => x.id)
+        .filter((id) => !(c.authKeys && c.authKeys[id]));
+      if (missing.length) {
+        log("以下机位还没填鉴权串，连接会失败：" + missing.join("、"), "warn");
+      }
+    }
+
     log("拉流通道已切换为「" + c.name + "」，请重新点击「连接全部机位」", "ok");
   });
 

@@ -151,6 +151,12 @@
         <select id="cloudSelect"></select>
         <label class="group-title" style="margin-top: 8px;">地址模板 <span class="mini">用 {cam} 代表机位 ID</span></label>
         <input type="text" id="cloudTemplateInput" placeholder="webrtc://livepull.example.com/live/{cam}" />
+        <div id="cloudAuthWrap" style="display: none;">
+          <label class="group-title" style="margin-top: 8px;">每路机位鉴权串 <span class="mini">每行一个：cam01=鉴权串</span></label>
+          <textarea id="cloudAuthInput" class="auth-keys" rows="6"
+            placeholder="cam01=1791280145-0-0-385e486446e5da1ec76b62cff97d21ac&#10;cam02=1791280145-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"></textarea>
+          <div class="mini" style="margin-top: 4px;">阿里云鉴权串按「AppName/流名」单独计算，6 路要各填一个</div>
+        </div>
         <div class="row" style="margin-top: 8px;">
           <button id="btnSaveCloud" class="btn small primary">保存并重连</button>
           <button id="btnResetCloud" class="btn small">恢复默认</button>

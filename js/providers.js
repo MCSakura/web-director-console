@@ -15,14 +15,23 @@
  * 输出三层就完全不用改。
  */
 
-/** 把模板里的 {cam} {base} {app} 替换成实际值 */
+/** 把模板里的 {cam} {base} {app} {auth} 替换成实际值 */
 function buildStreamUrl(cloud, camId, cfg) {
   var base = cloud.base !== undefined ? cloud.base : cfg.serverBase;
   var app = cloud.app !== undefined ? cloud.app : cfg.app;
-  return String(cloud.urlTemplate || "")
+  var auth = (cloud.authKeys && cloud.authKeys[camId]) || "";
+  var tpl = String(cloud.urlTemplate || "");
+
+  // 阿里云的鉴权串与「AppName/流名」绑定，必须每路机位各填一个，不能共用
+  if (tpl.indexOf("{auth}") >= 0 && !auth) {
+    throw new Error("机位 " + camId + " 还没填鉴权串（在「每路机位鉴权串」里按 cam01=xxx 的格式补上）");
+  }
+
+  return tpl
     .replace(/\{cam\}/g, camId)
     .replace(/\{base\}/g, base)
-    .replace(/\{app\}/g, app);
+    .replace(/\{app\}/g, app)
+    .replace(/\{auth\}/g, auth);
 }
 
 /** 按 id 取当前生效的拉流通道 */
