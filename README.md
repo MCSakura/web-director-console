@@ -44,7 +44,7 @@ python -m http.server 8080
 
 ## 部署
 
-项目提供三种部署方式，按需选择。
+项目提供四种部署方式，按需选择。
 
 ### 方式一：一键自部署（推荐，换服务器最方便）
 
@@ -123,6 +123,90 @@ docker run -d --name danmaku-gateway --restart unless-stopped -p 8099:8099 \
   danmaku-gateway:latest
 ```
 
+### 方式四：面板部署（1Panel / 宝塔）
+
+服务器上装了 **1Panel** 或 **宝塔面板** 时，用面板的「网站」功能托管前端最省事，不用自己敲 docker。
+
+#### 1. 打包静态站点
+
+```powershell
+python deploy.py zip      # 生成 director-web.zip，不连服务器
+```
+
+压缩包里 `index.html` 在**根目录**，解压到网站根目录即可直接用。
+
+#### 2. 建站并上传解压
+
+| 步骤 | 宝塔面板 | 1Panel |
+|---|---|---|
+| 建站 | 网站 → 添加站点，类型选「纯静态」，填域名或 IP | 网站 → 网站 → 创建网站，类型选「静态网站」 |
+| 传文件 | 站点 → 文件 → 上传 `director-web.zip` → 右键「解压」 | 站点 → 文件 → 上传 → 解压 |
+| 默认目录 | `/www/wwwroot/<你的域名>/` | `/opt/1panel/www/sites/<你的域名>/index/` |
+
+解压后确认根目录直接是 `index.html`（不要多出 `web/` 一层）。
+
+#### 3. 关掉缓存（推荐）
+
+面板默认会给 HTML/JS/CSS 加缓存，容易「改了代码不生效」。把站点 nginx 配置里的 location 换成：
+
+```nginx
+location / {
+    add_header Cache-Control "no-cache";
+    try_files $uri $uri/ =404;
+}
+```
+
+宝塔在「网站 → 设置 → 配置文件」，1Panel 在「网站 → 站点 → 配置文件」。
+
+#### 4. 部署弹幕网关
+
+两种方式任选。
+
+**A. Docker（推荐，两个面板都有 Docker 管理）**
+
+```bash
+cd danmaku && docker build -t danmaku-gateway:latest .
+docker run -d --name danmaku-gateway --restart unless-stopped -p 8099:8099 \
+  [-e DANMAKU_COOKIE='SESSDATA=...'] danmaku-gateway:latest
+```
+
+面板里操作也可以：1Panel「容器 → 镜像 → 构建镜像」、宝塔「Docker → 镜像 → 构建」。
+
+**B. 面板自带的 Python 项目**
+
+- 宝塔：软件商店装「Python 项目管理器」→ 添加项目，路径选 `danmaku/`，启动文件 `gateway.py`，端口 8099
+- 1Panel：运行环境 → Python 建一个运行环境，再在「网站 → 运行环境」里创建 Python 项目
+
+依赖只有 `websockets` 一个：
+
+```bash
+pip install -r danmaku/requirements.txt
+```
+
+环境变量：`DANMAKU_COOKIE`（B站登录 Cookie，填了才显示真实昵称）、`DANMAKU_PORT`（默认 8099）。
+
+#### 5. 前端用 HTTPS 时，弹幕网关要走 wss
+
+前端是 `https://` 时浏览器不允许连 `ws://`（混合内容会被拦）。给站点加一段反向代理：
+
+```nginx
+location /danmaku {
+    proxy_pass http://127.0.0.1:8099/danmaku;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+```
+
+然后在页面右侧「B站弹幕 → 网关地址」填 `wss://你的域名/danmaku`。
+
+#### 面板部署注意事项
+
+- 记得在面板/云厂商安全组放行弹幕网关端口（默认 8099）。
+- **本机摄像头和 WebRTC 都要求安全上下文**（HTTPS 或 localhost）。纯 HTTP 的面板站点拉流正常，但「本机摄像头」用不了。
+- 前端站点与弹幕网关可以用不同域名/端口，只要页面上把网关地址填对即可。
+
 ## 项目结构
 
 ```
@@ -146,8 +230,9 @@ web-director-console/
 ├── danmaku/
 │   ├── gateway.py          # 弹幕网关 WebSocket 服务
 │   ├── Dockerfile
+│   ├── requirements.txt    # 网关依赖（Docker / 面板 Python 项目都用）
 │   └── deploy.py           # 弹幕网关独立部署脚本
-├── deploy.py               # 统一部署脚本（交互菜单 + 命令行）
+├── deploy.py               # 统一部署脚本（交互菜单 + 命令行，含面板部署打包）
 ├── deploy.bat              # Windows 一键启动器
 ├── install.sh              # curl|bash 自部署脚本
 ├── upload.py               # 增量文件上传工具

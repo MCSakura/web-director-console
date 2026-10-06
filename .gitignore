@@ -20,3 +20,7 @@ desktop.ini
 # 本地敏感配置（如有）
 .env
 *.local
+
+# 部署脚本生成的打包产物
+director-web.zip
+director-console.tar.gz

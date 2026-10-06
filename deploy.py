@@ -38,6 +38,7 @@ import sys
 import time
 import getpass
 import tarfile
+import zipfile
 
 try:
     import paramiko
@@ -193,6 +194,64 @@ def build_pkg_tar():
     return buf
 
 
+def make_zip_package():
+    """
+    把静态站点打包成 director-web.zip（index.html 在压缩包根目录）。
+    用于 1Panel / 宝塔 这类面板：在面板里建好站点后，把 zip 传到网站根目录解压即可。
+    这个命令不连服务器。
+    """
+    import re
+    stamp = str(int(time.time()))
+
+    def html_bytes(path):
+        with open(path, "r", encoding="utf-8") as fh:
+            html = fh.read()
+        # 注入 ?v=时间戳，避免面板/CDN 缓存住旧版 js/css
+        html = re.sub(r'(href="[^"?]+\.css)"', r'\1?v=' + stamp + '"', html)
+        html = re.sub(r'(src="[^"?]+\.js)"', r'\1?v=' + stamp + '"', html)
+        return html.encode("utf-8")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name in WEB_FILES:
+            path = os.path.join(PROJECT_DIR, name)
+            if not os.path.exists(path):
+                sys.exit("缺少文件：" + path)
+            if os.path.isdir(path):
+                for root, _dirs, files in os.walk(path):
+                    for fn in files:
+                        full = os.path.join(root, fn)
+                        rel = os.path.relpath(full, PROJECT_DIR).replace("\\", "/")
+                        if fn.lower().endswith(".html"):
+                            z.writestr(rel, html_bytes(full))
+                        else:
+                            z.write(full, rel)
+            elif name.lower().endswith(".html"):
+                z.writestr(name, html_bytes(path))
+            else:
+                z.write(path, name)
+
+    data = buf.getvalue()
+    out_path = os.path.join(PROJECT_DIR, "director-web.zip")
+    with open(out_path, "wb") as fh:
+        fh.write(data)
+
+    print(SEP)
+    print("已生成静态站点压缩包（面板部署用）")
+    print(SEP)
+    print("路径：%s（%d KB）" % (out_path, len(data) // 1024))
+    print("内容：%s（index.html 在压缩包根目录，解压到网站根目录即可）" % "、".join(WEB_FILES))
+    print()
+    print("用法：")
+    print("  1) 面板里先建一个「静态 / 纯静态」站点（域名或 IP）")
+    print("  2) 把该 zip 上传到站点根目录，再解压")
+    print("  3) 浏览器打开站点地址即可")
+    print("  宝塔：网站 → 站点 → 文件 → 上传 → 解压")
+    print("  1Panel：网站 → 网站 → 站点 → 文件 → 上传 → 解压")
+    print()
+    print("弹幕网关与更多细节见 README「方式四：面板部署（1Panel / 宝塔）」。")
+
+
 def deploy_pkg(client):
     """构建并上传部署包 + install.sh 到前端根目录，供 curl|bash 使用。"""
     print(SEP)
@@ -337,6 +396,7 @@ MENU = """
   4) 增量上传指定文件
   5) 查看服务器运行状态
   6) 刷新部署包（供 curl|bash 使用）
+  7) 打包静态站点 zip（1Panel / 宝塔 面板部署用）
   0) 退出
 """
 
@@ -368,8 +428,10 @@ def interactive(client):
             server_status(client)
         elif choice == "6":
             deploy_pkg(client)
+        elif choice == "7":
+            make_zip_package()
         else:
-            print("无效选项，请输入 0-6")
+            print("无效选项，请输入 0-7")
 
 
 # ==================== 入口 ====================
@@ -384,6 +446,7 @@ HELP = """网页导播台一键部署脚本
   python deploy.py upload <f>.. 增量上传指定文件
   python deploy.py status       查看服务器状态
   python deploy.py pkg          刷新部署包（供 curl|bash 一键部署）
+  python deploy.py zip          打包静态站点 zip（1Panel / 宝塔 面板部署用，不连服务器）
   python deploy.py -h           显示本帮助
 
 环境变量：
@@ -400,6 +463,11 @@ def main():
 
     if args and args[0] in ("-h", "--help", "help"):
         print(HELP)
+        return
+
+    # 打包静态站点不需要连服务器，先处理掉
+    if args and args[0].lower() in ("zip", "pack"):
+        make_zip_package()
         return
 
     client = connect()

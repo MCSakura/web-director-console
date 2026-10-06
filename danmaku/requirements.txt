@@ -1,0 +1,3 @@
+# 弹幕网关依赖（Docker 构建与面板「Python 项目」部署都用它）
+# 其余全部使用 Python 标准库
+websockets==12.0
