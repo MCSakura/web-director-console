@@ -1048,7 +1048,7 @@
     "提示：本机开发建议用 Chrome / Edge 打开；公网访问必须 HTTPS，否则浏览器会禁用 WebRTC。";
   selectProgram(programId);
   log("导播台已就绪，拉流通道「" + (currentCloud() ? currentCloud().name : "无") +
-    "」，成品输出服务器 " + describeBase(CFG.serverBase) + "，点击「连接全部机位」开始拉流");
+    "」，自建服务器 " + describeBase(CFG.serverBase) + "，点击「连接全部机位」开始拉流");
 
   // 若配置里已有直播间号，自动订阅
   if (CFG.danmaku.room) {

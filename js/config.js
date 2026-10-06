@@ -10,8 +10,9 @@ window.DIRECTOR_CONFIG = {
   app: "live",
 
   /**
-   * 自建 ZLMediaKit 的服务地址（仅在拉流通道选「自建 ZLMediaKit」且模板里用了 {base} 时生效，
-   * 同时「成品回传」也用它）。留空 = 与页面同源。
+   * 自建服务器地址：拉流通道的地址模板里若用了 {base} 占位符，就替换成这个值
+   *（目前只有「自建 ZLMediaKit」的模板用到）。留空 = 与页面同源。
+   * 注意：成品回传不用它，回传走各通道自己的 whipPushServer / whipPushMode。
    */
   serverBase: "",
 
