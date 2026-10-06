@@ -677,7 +677,8 @@
     const pick = document.createElement("button");
     pick.className = "btn small";
     pick.textContent = "选择文件";
-    pick.disabled = true;
+    // 只有「图片 / 本地视频」才需要挑文件，默认（流媒体）直接隐藏
+    pick.style.display = SOURCE_NEEDS_FILE[sel.value] ? "" : "none";
 
     const fileName = document.createElement("span");
     fileName.className = "mini source-name";
@@ -688,18 +689,18 @@
 
     sel.addEventListener("change", () => {
       const type = sel.value;
-      pick.disabled = !SOURCE_NEEDS_FILE[type];
+      // 不需要挑文件的来源（流媒体 / 本机摄像头）把按钮藏起来，只在需要时显示
+      pick.style.display = SOURCE_NEEDS_FILE[type] ? "" : "none";
+      fileName.textContent = "";
 
       if (type === "pull") {
         cam.setLocalSource(null);
-        fileName.textContent = "";
         log("机位 " + def.id + "：来源改回「流媒体」，点该机位的「连接」生效");
         return;
       }
 
       if (type === "camera") {
         cam.setLocalSource({ type: type, file: null });
-        fileName.textContent = "本机摄像头";
         log("机位 " + def.id + "：来源改为「本机摄像头」，点该机位的「连接」生效（需 HTTPS 或 localhost）");
         return;
       }
