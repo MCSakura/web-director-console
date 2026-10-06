@@ -83,7 +83,7 @@
       </div>
 
       <div class="control-group">
-        <label class="group-title">帧同步 <span class="mini">自动补偿＝标尺最多退到"最慢那一路"</span></label>
+        <label class="group-title">帧同步 <span class="mini marquee" id="syncHintInline">自动补偿＝标尺最多退到"最慢那一路"</span></label>
         <div class="row" style="margin-top: 8px;">
           <span class="mini" style="flex: 0 0 52px;">自动补偿</span>
           <input type="number" id="syncMaxDelayInput" min="0" max="5000" step="50" />
@@ -162,7 +162,7 @@
         <select id="cloudSelect"></select>
         <label class="group-title" style="margin-top: 8px;">每路机位拉流地址 <span class="mini">腾讯云 / 阿里云都直接粘完整地址</span></label>
         <div class="cam-urls" id="camUrls"></div>
-        <label class="group-title" style="margin-top: 8px;">地址模板 <span class="mini">兜底：上面留空的机位用它，{cam} 代表机位 ID</span></label>
+        <label class="group-title" style="margin-top: 8px;">地址模板 <span class="mini marquee" id="templateHintInline">兜底：上面留空的机位用它，{cam} 代表机位 ID</span></label>
         <input type="text" id="cloudTemplateInput" placeholder="webrtc://livepull.example.com/live/{cam}" />
         <div class="row" style="margin-top: 8px;">
           <button id="btnSaveCloud" class="btn small primary">保存并重连</button>

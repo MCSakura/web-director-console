@@ -436,7 +436,7 @@ input[type="file"]::file-selector-button:hover { border-color: #3c5a7a; }
  */
 .group-title .mini {
   float: right;
-  max-width: 68%;
+  max-width: 70%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

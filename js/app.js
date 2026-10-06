@@ -56,6 +56,8 @@
     cloudHint: $("cloudHint"),
     sourceList: $("sourceList"),
     sourceHintInline: $("sourceHintInline"),
+    syncHintInline: $("syncHintInline"),
+    templateHintInline: $("templateHintInline"),
     dmRoomInput: $("dmRoomInput"),
     dmGatewayInput: $("dmGatewayInput"),
     dmCookieInput: $("dmCookieInput"),
@@ -489,9 +491,10 @@
   }, 1000);
 
   // ---------- 溢出文字自动跑马灯：超宽时循环滚动，到端点停顿后回卷 ----------
-  const MARQUEE_STEP = 1;       // 每次移动的像素
-  const MARQUEE_INTERVAL = 40;  // 毫秒
-  const MARQUEE_PAUSE = 30;     // 到端点后停顿的 tick 数（≈1.2 秒）
+  const MARQUEE_STEP = 1;              // 每次移动的像素
+  const MARQUEE_INTERVAL = 40;         // 毫秒
+  const MARQUEE_PAUSE = 30;            // 到端点后停顿的 tick 数（≈1.2 秒）
+  const MARQUEE_MIN_OVERFLOW = 8;      // 溢出不足这么多就不滚：只差几像素时会来回抖，很难看
 
   /** 需要跑马灯的元素：{ el, last, pause }；元素需是 overflow:hidden + white-space:nowrap */
   const marqueeItems = [];
@@ -515,7 +518,7 @@
       }
 
       const overflow = el.scrollWidth - el.clientWidth;
-      if (overflow <= 0) {
+      if (overflow <= MARQUEE_MIN_OVERFLOW) {
         el.scrollLeft = 0;
         return;
       }
@@ -532,8 +535,10 @@
     });
   }, MARQUEE_INTERVAL);
 
-  addMarquee(ui.dmStatus);           // 弹幕连接状态
-  addMarquee(ui.sourceHintInline);   // 「机位来源」标题右侧的可选值说明
+  addMarquee(ui.dmStatus);              // 弹幕连接状态
+  addMarquee(ui.sourceHintInline);      // 「机位来源」标题右侧的可选值说明
+  addMarquee(ui.syncHintInline);        // 「帧同步」标题右侧的自动补偿说明
+  addMarquee(ui.templateHintInline);    // 「地址模板」标题右侧的兜底说明
 
   const danmaku = new DanmakuPanel(CFG.danmaku, { onLog: log });
 
