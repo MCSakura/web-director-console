@@ -81,7 +81,7 @@ class CameraSource {
       this.state = "live";
     } catch (err) {
       if (gen !== this.connectionGen) return;
-      this._fail("拉流失败：" + (err && err.message ? err.message : String(err)));
+      this._fail("取流失败：" + (err && err.message ? err.message : String(err)));
     }
     this._notify();
   }

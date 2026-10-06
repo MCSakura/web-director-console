@@ -653,8 +653,10 @@
     ui.audioList.appendChild(row);
   }
 
-  // ---------- 构建「机位来源」行（拉流 / 图片 / 本地视频） ----------
-  const SOURCE_LABELS = { pull: "拉流", image: "图片", video: "本地视频" };
+  // ---------- 构建「机位来源」行（流媒体 / 图片 / 本地视频 / 本机摄像头） ----------
+  const SOURCE_LABELS = { pull: "流媒体", image: "图片", video: "本地视频", camera: "本机摄像头" };
+  /** 哪些来源需要先挑一个本地文件 */
+  const SOURCE_NEEDS_FILE = { pull: false, image: true, video: true, camera: false };
 
   for (const def of CFG.cameras) {
     const cam = engine.cameras.get(def.id);
@@ -686,13 +688,22 @@
 
     sel.addEventListener("change", () => {
       const type = sel.value;
-      pick.disabled = type === "pull";
+      pick.disabled = !SOURCE_NEEDS_FILE[type];
+
       if (type === "pull") {
         cam.setLocalSource(null);
         fileName.textContent = "";
-        log("机位 " + def.id + "：来源改回「拉流」，点该机位的「连接」生效");
+        log("机位 " + def.id + "：来源改回「流媒体」，点该机位的「连接」生效");
         return;
       }
+
+      if (type === "camera") {
+        cam.setLocalSource({ type: type, file: null });
+        fileName.textContent = "本机摄像头";
+        log("机位 " + def.id + "：来源改为「本机摄像头」，点该机位的「连接」生效（需 HTTPS 或 localhost）");
+        return;
+      }
+
       fileInput.accept = type === "video" ? "video/*" : "image/*";
       cam.setLocalSource({ type: type, file: null });
       fileName.textContent = "待选择文件";

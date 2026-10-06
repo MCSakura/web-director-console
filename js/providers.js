@@ -540,14 +540,77 @@ class LocalVideoProvider {
 }
 
 /**
+ * 本机摄像头 / 麦克风：直接 getUserMedia 取轨道，不走网络。
+ *
+ * 注意：浏览器只在「安全上下文」下开放摄像头，即 https:// 或 localhost。
+ * 用 http://内网IP 打开时 navigator.mediaDevices 是 undefined，这里会给出明确报错。
+ */
+class LocalCameraProvider {
+  constructor(source, cfg, options) {
+    this.source = source;
+    this.cfg = cfg;
+    this.options = options || {};
+    this.stream = null;
+    this.closed = false;
+  }
+
+  async start() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error(
+        "本机摄像头只能在 HTTPS 或 localhost 下使用（当前页面是 " +
+        location.protocol + "//" + location.host + "，浏览器已禁用摄像头）"
+      );
+    }
+
+    var video = (this.source && this.source.deviceId)
+      ? { deviceId: { exact: this.source.deviceId } }
+      : true;
+
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ video: video, audio: true });
+    } catch (err) {
+      // 有些设备/权限只给到摄像头，没麦克风；退一步只取视频
+      this.stream = await navigator.mediaDevices.getUserMedia({ video: video, audio: false });
+    }
+
+    if (this.closed) {
+      this._stop();
+      return;
+    }
+    this.stream.getTracks().forEach((t) => {
+      if (this.options.onTrack) this.options.onTrack(t);
+    });
+  }
+
+  close() {
+    this.closed = true;
+    this._stop();
+  }
+
+  _stop() {
+    if (this.stream) {
+      this.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) { /* ignore */ } });
+      this.stream = null;
+    }
+  }
+}
+
+/**
  * 按「机位来源」创建本地素材通道。
  * source.type 为 "pull" 或没设时返回 null，表示走云端拉流通道。
  */
 function createLocalProvider(source, cfg, options) {
   if (!source || !source.type || source.type === "pull") return null;
-  if (!source.file) throw new Error("还没选择本地文件");
-  if (source.type === "image") return new LocalImageProvider(source, cfg, options);
-  if (source.type === "video") return new LocalVideoProvider(source, cfg, options);
+
+  if (source.type === "camera") return new LocalCameraProvider(source, cfg, options);
+
+  if (source.type === "image" || source.type === "video") {
+    if (!source.file) throw new Error("还没选择本地文件");
+    return source.type === "image"
+      ? new LocalImageProvider(source, cfg, options)
+      : new LocalVideoProvider(source, cfg, options);
+  }
+
   throw new Error("未知的机位来源：" + source.type);
 }
 
