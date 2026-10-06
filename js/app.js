@@ -55,6 +55,7 @@
     btnResetCloud: $("btnResetCloud"),
     cloudHint: $("cloudHint"),
     sourceList: $("sourceList"),
+    sourceHintInline: $("sourceHintInline"),
     dmRoomInput: $("dmRoomInput"),
     dmGatewayInput: $("dmGatewayInput"),
     dmCookieInput: $("dmCookieInput"),
@@ -487,41 +488,52 @@
     ui.syncDelayInfo.textContent = "当前同步延迟：" + Math.round(engine.currentDelayMs || 0) + " ms";
   }, 1000);
 
-  // ---------- 连接信息自动跑马灯：文字溢出时循环滚动，到端点停顿后回卷 ----------
-  const DM_MARQUEE_STEP = 1;       // 每次移动的像素
-  const DM_MARQUEE_INTERVAL = 40;  // 毫秒
-  const DM_MARQUEE_PAUSE = 30;     // 到端点后停顿的 tick 数（≈1.2 秒）
-  let marqueePause = 0;
-  let lastStatusText = "";
+  // ---------- 溢出文字自动跑马灯：超宽时循环滚动，到端点停顿后回卷 ----------
+  const MARQUEE_STEP = 1;       // 每次移动的像素
+  const MARQUEE_INTERVAL = 40;  // 毫秒
+  const MARQUEE_PAUSE = 30;     // 到端点后停顿的 tick 数（≈1.2 秒）
+
+  /** 需要跑马灯的元素：{ el, last, pause }；元素需是 overflow:hidden + white-space:nowrap */
+  const marqueeItems = [];
+
+  /** 把一个元素登记进跑马灯（对所有登记项共用一个定时器） */
+  function addMarquee(el) {
+    if (el) marqueeItems.push({ el: el, last: "", pause: 0 });
+  }
 
   setInterval(() => {
-    const el = ui.dmStatus;
-    if (!el) return;
+    marqueeItems.forEach((item) => {
+      const el = item.el;
+      if (!el) return;
 
-    // 文案变化（连接中/已连接/已断开…）时从头开始
-    if (el.textContent !== lastStatusText) {
-      lastStatusText = el.textContent;
-      el.scrollLeft = 0;
-      marqueePause = 0;
-      return;
-    }
+      // 文案变化（连接中/已连接/已断开…）时从头开始
+      if (el.textContent !== item.last) {
+        item.last = el.textContent;
+        el.scrollLeft = 0;
+        item.pause = 0;
+        return;
+      }
 
-    const overflow = el.scrollWidth - el.clientWidth;
-    if (overflow <= 0) {
-      el.scrollLeft = 0;
-      return;
-    }
-    if (marqueePause > 0) {
-      marqueePause--;
-      return;
-    }
+      const overflow = el.scrollWidth - el.clientWidth;
+      if (overflow <= 0) {
+        el.scrollLeft = 0;
+        return;
+      }
+      if (item.pause > 0) {
+        item.pause--;
+        return;
+      }
 
-    el.scrollLeft += DM_MARQUEE_STEP;
-    if (el.scrollLeft >= overflow) {
-      el.scrollLeft = 0; // 回卷重新开始
-      marqueePause = DM_MARQUEE_PAUSE;
-    }
-  }, DM_MARQUEE_INTERVAL);
+      el.scrollLeft += MARQUEE_STEP;
+      if (el.scrollLeft >= overflow) {
+        el.scrollLeft = 0; // 回卷重新开始
+        item.pause = MARQUEE_PAUSE;
+      }
+    });
+  }, MARQUEE_INTERVAL);
+
+  addMarquee(ui.dmStatus);           // 弹幕连接状态
+  addMarquee(ui.sourceHintInline);   // 「机位来源」标题右侧的可选值说明
 
   const danmaku = new DanmakuPanel(CFG.danmaku, { onLog: log });
 

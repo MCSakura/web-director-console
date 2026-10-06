@@ -430,7 +430,19 @@ input[type="file"]::file-selector-button:hover { border-color: #3c5a7a; }
   color: var(--text-dim);
   margin-bottom: 8px;
 }
-.group-title .mini { float: right; }
+/*
+ * 标题右侧的说明文字：浮到右边并强制单行。
+ * 不限制的话，长文字会溢出标题框、被下面的输入框/下拉盖住。
+ */
+.group-title .mini {
+  float: right;
+  max-width: 68%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 需要看全的说明文字（如「机位来源」）改用跑马灯滚动，由 JS 驱动 scrollLeft */
+.group-title .mini.marquee { text-overflow: clip; }
 
 .btn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .cam-btn.active { background: var(--accent-dim); border-color: #1f7a45; color: #d7ffe6; }
