@@ -21,6 +21,13 @@ class AudioMixer {
     this.master.connect(this.monitorGain);
     this.monitorGain.connect(this.ctx.destination);
 
+    /**
+     * 每路机位的目标音量 / 静音状态。
+     * 与「是否已连接」解耦：先调好再连接、或断开重连，都会自动套用，不会被重置回 100%。
+     */
+    this.volumes = new Map();
+    this.mutes = new Map();
+
     /** @type {Map<string, {source: MediaStreamAudioSourceNode, gain: GainNode, muted: boolean, volume: number}>} */
     this.channels = new Map();
   }
@@ -37,18 +44,22 @@ class AudioMixer {
     if (this.channels.has(camId)) return;
     const source = this.ctx.createMediaStreamSource(new MediaStream([track]));
     const gain = this.ctx.createGain();
-    gain.gain.value = 1;
     source.connect(gain);
     gain.connect(this.master);
 
-    // 旁路统计：AnalyserNode 只读原始 PCM（不改变音频流），用于驱动每路机位的音量条
+    // 音量条接在增益之后：调音量 / 静音时能立刻从音量条上看到变化
     const analyser = this.ctx.createAnalyser();
     analyser.fftSize = 512;
-    source.connect(analyser);
+    gain.connect(analyser);
+
+    // 套用连接前就设好的音量 / 静音，避免连上后被重置成 100%
+    const volume = this.volumes.has(camId) ? this.volumes.get(camId) : 1;
+    const muted = !!this.mutes.get(camId);
+    gain.gain.value = muted ? 0 : volume;
 
     this.channels.set(camId, {
       source, gain, analyser,
-      muted: false, volume: 1,
+      muted, volume,
       _timeData: new Uint8Array(analyser.fftSize)
     });
   }
@@ -83,17 +94,21 @@ class AudioMixer {
   }
 
   setVolume(camId, volume) {
+    const v = Math.max(0, Math.min(1, Number(volume) || 0));
+    this.volumes.set(camId, v);
     const ch = this.channels.get(camId);
-    if (!ch) return;
-    ch.volume = volume;
-    ch.gain.gain.value = ch.muted ? 0 : volume;
+    if (!ch) return; // 还没连接：记下来，addTrack 时套用
+    ch.volume = v;
+    ch.gain.gain.value = ch.muted ? 0 : v;
   }
 
   setMuted(camId, muted) {
+    const m = !!muted;
+    this.mutes.set(camId, m);
     const ch = this.channels.get(camId);
-    if (!ch) return;
-    ch.muted = muted;
-    ch.gain.gain.value = muted ? 0 : ch.volume;
+    if (!ch) return; // 还没连接：记下来，addTrack 时套用
+    ch.muted = m;
+    ch.gain.gain.value = m ? 0 : ch.volume;
   }
 
   setMaster(volume) {

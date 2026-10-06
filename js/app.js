@@ -777,7 +777,9 @@
     mixer.setMaster(Number(ui.masterVol.value) / 100);
   });
 
-  ui.monitorChk.addEventListener("change", () => {
+  ui.monitorChk.addEventListener("change", async () => {
+    // 浏览器要求先有用户手势才能出声，否则监听打开了也没声音
+    await mixer.resume();
     mixer.setMonitor(ui.monitorChk.checked);
   });
 
