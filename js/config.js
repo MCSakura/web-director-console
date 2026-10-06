@@ -123,6 +123,12 @@ window.DIRECTOR_CONFIG = {
   logoWidthScale: 0.12,
 
   /**
+   * 台标位置：top-left | top-right | bottom-left | bottom-right
+   * 页面上可用「台标」组的下拉菜单实时切换。
+   */
+  logoPosition: "top-right",
+
+  /**
    * 时间对齐容差（毫秒）：最接近帧与基准帧相差超过该值则视为无可用帧，跳过该路。
    * 页面上不再提供输入框，需要调整请直接改这里。
    */

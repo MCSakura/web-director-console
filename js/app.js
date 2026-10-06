@@ -29,6 +29,7 @@
     logoInput: $("logoInput"),
     logoSizeRange: $("logoSizeRange"),
     logoSizeVal: $("logoSizeVal"),
+    logoPosSelect: $("logoPosSelect"),
     btnClearLogo: $("btnClearLogo"),
     audioList: $("audioList"),
     masterVol: $("masterVol"),
@@ -771,6 +772,22 @@
     compositor.setLogoWidthScale(CFG.logoWidthScale);
     localStorage.setItem(LOGO_SIZE_KEY, String(CFG.logoWidthScale));
     syncLogoSizeLabel();
+  });
+
+  // ---------- 台标位置（左上 / 右上 / 左下 / 右下，实时生效并存浏览器） ----------
+  const LOGO_POS_KEY = "director.logoPosition";
+  const LOGO_POSITIONS = ["top-left", "top-right", "bottom-left", "bottom-right"];
+
+  const savedLogoPos = localStorage.getItem(LOGO_POS_KEY);
+  if (savedLogoPos && LOGO_POSITIONS.indexOf(savedLogoPos) >= 0) CFG.logoPosition = savedLogoPos;
+
+  ui.logoPosSelect.value = CFG.logoPosition;
+  compositor.setLogoPosition(CFG.logoPosition);
+
+  ui.logoPosSelect.addEventListener("change", () => {
+    CFG.logoPosition = ui.logoPosSelect.value;
+    compositor.setLogoPosition(CFG.logoPosition);
+    localStorage.setItem(LOGO_POS_KEY, CFG.logoPosition);
   });
 
   ui.masterVol.addEventListener("input", () => {

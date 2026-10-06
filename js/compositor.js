@@ -36,6 +36,8 @@ class Compositor {
     this.logoImage = null;
     // 台标宽度：占成品画面的比例，可现场调整
     this.logoWidthScale = config.logoWidthScale != null ? config.logoWidthScale : 0.12;
+    /** 台标位置：top-left | top-right | bottom-left | bottom-right */
+    this.logoPosition = config.logoPosition || "top-right";
     this.transitionMs = 300;
 
     // 转场用的上一帧成品快照
@@ -72,6 +74,11 @@ class Compositor {
   /** 台标宽度（占成品画面宽度的比例，如 0.12 = 12%） */
   setLogoWidthScale(scale) {
     this.logoWidthScale = Number(scale) || 0;
+  }
+
+  /** 台标位置：top-left / top-right / bottom-left / bottom-right */
+  setLogoPosition(pos) {
+    this.logoPosition = pos || "top-right";
   }
 
   setTransitionMs(ms) {
@@ -145,8 +152,11 @@ class Compositor {
       const lw = Math.max(1, Math.round(W * this.logoWidthScale));
       const lh = Math.round(lw * (this.logoImage.height / this.logoImage.width));
       const margin = Math.round(W * 0.02);
+      // 右上 / 右下往左贴，左下 / 右下往上贴
+      const x = /right$/.test(this.logoPosition) ? W - lw - margin : margin;
+      const y = /^bottom/.test(this.logoPosition) ? H - lh - margin : margin;
       ctx.globalAlpha = 0.9;
-      ctx.drawImage(this.logoImage, W - lw - margin, margin, lw, lh);
+      ctx.drawImage(this.logoImage, x, y, lw, lh);
       ctx.globalAlpha = 1;
     }
   }
