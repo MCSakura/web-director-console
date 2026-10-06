@@ -186,20 +186,152 @@ class TcPlayerProvider {
   }
 }
 
-// ============ 通道三：阿里云超低延时 RTS ============
-class AliRtsProvider {
+// ============ 通道三：阿里云视频直播（Aliplayer Web SDK） ============
+/**
+ * Aliplayer 内置了 Web RTS SDK 插件，可直接播放 artc:// 超低延时地址；
+ * 也支持标准直播的 http-flv / hls 地址（此时会自动降级）。
+ * 与腾讯云通道一样，从播放器的 <video> 里取原生轨道给帧同步模块。
+ */
+var aliplayerLoading = null;
+function loadAliplayer(sdkUrl) {
+  if (typeof window.Aliplayer !== "undefined") return Promise.resolve();
+  if (aliplayerLoading) return aliplayerLoading;
+
+  aliplayerLoading = new Promise(function (resolve, reject) {
+    var s = document.createElement("script");
+    s.src = sdkUrl;
+    s.onload = function () { resolve(); };
+    s.onerror = function () {
+      aliplayerLoading = null;
+      reject(new Error("Aliplayer 脚本加载失败：" + sdkUrl));
+    };
+    document.head.appendChild(s);
+  });
+  return aliplayerLoading;
+}
+
+class AliplayerProvider {
   constructor(cloud, camId, cfg, options) {
     this.cloud = cloud;
     this.camId = camId;
     this.cfg = cfg;
     this.options = options || {};
+    this.player = null;
+    this.container = null;
+    this.video = null;
+    this.timer = null;
+    this.closed = false;
+    this.emitted = false;
   }
 
   async start() {
-    throw new Error("阿里云 RTS 通道尚未接入：需要先按官方《RTS 信令协议规范》完成信令实现并实测");
+    if (!this.cloud.sdkUrl) throw new Error("该通道未配置 Aliplayer SDK 地址");
+
+    await loadAliplayer(this.cloud.sdkUrl);
+    if (this.closed) return;
+
+    var url = buildStreamUrl(this.cloud, this.camId, this.cfg);
+
+    // Aliplayer 需要一个带 id 的容器；放到屏幕外但保持正常尺寸渲染，避免浏览器对极小元素做解码节流。
+    var cid = "alip-" + this.camId + "-" + Date.now();
+    var box = document.createElement("div");
+    box.id = cid;
+    box.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:640px;height:360px;pointer-events:none;";
+    document.body.appendChild(box);
+    this.container = box;
+
+    this.player = new window.Aliplayer({
+      id: cid,
+      source: url,
+      isLive: true,
+      autoplay: true,
+      muted: true,
+      playsinline: true,
+      width: "640px",
+      height: "360px"
+    });
+    this._waitForStream();
   }
 
-  close() { /* 无资源 */ }
+  /**
+   * 轮询播放器内部的 <video>：优先取原生 MediaStream（RTS/WebRTC 播放时 srcObject 即底层流）；
+   * 若长时间拿不到（例如降级成 http-flv 的 MSE 播放），退化为从 <video> 元素抓取轨道。
+   */
+  _waitForStream() {
+    var self = this;
+    var waited = 0;
+    var TIMEOUT = 30000;
+
+    function tick() {
+      if (self.closed || self.emitted) return;
+
+      var video = self.video || (self.container && self.container.querySelector("video"));
+      if (video) self.video = video;
+
+      var so = video && video.srcObject;
+      if (so && typeof MediaStream !== "undefined" && so instanceof MediaStream) {
+        var tracks = so.getTracks();
+        if (tracks.length) {
+          self._emit(tracks);
+          return;
+        }
+      }
+
+      waited += 300;
+      if (waited >= TIMEOUT) {
+        var fallback = self._captureFromVideo(video);
+        if (fallback) {
+          self._emit(fallback.getTracks());
+          return;
+        }
+        if (self.options.onStateChange) self.options.onStateChange("failed");
+        return;
+      }
+      self.timer = setTimeout(tick, 300);
+    }
+    tick();
+  }
+
+  _emit(tracks) {
+    if (this.emitted) return;
+    this.emitted = true;
+    var self = this;
+    tracks.forEach(function (t) {
+      if (self.options.onTrack) self.options.onTrack(t);
+    });
+  }
+
+  /** 兜底：从 <video> 元素抓取轨道（拿不到原生轨道时才用） */
+  _captureFromVideo(video) {
+    if (!video || typeof video.captureStream !== "function") return null;
+    try {
+      var ms = video.captureStream();
+      return ms && ms.getTracks().length ? ms : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  close() {
+    this.closed = true;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.player) {
+      try { this.player.dispose(); } catch (e) { /* ignore */ }
+      this.player = null;
+    }
+    if (this.video) {
+      try { this.video.srcObject = null; } catch (e) { /* ignore */ }
+      this.video = null;
+    }
+    if (this.container && this.container.parentNode) {
+      this.container.parentNode.removeChild(this.container);
+    }
+    this.container = null;
+  }
 }
 
 // ============ 工厂 ============
@@ -210,8 +342,8 @@ function createStreamProvider(cloud, camId, cfg, options) {
       return new WhepProvider(cloud, camId, cfg, options);
     case "tcplayer":
       return new TcPlayerProvider(cloud, camId, cfg, options);
-    case "ali-rts":
-      return new AliRtsProvider(cloud, camId, cfg, options);
+    case "aliplayer":
+      return new AliplayerProvider(cloud, camId, cfg, options);
     default:
       throw new Error("未知的拉流方式：" + cloud.provider);
   }

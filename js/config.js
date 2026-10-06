@@ -22,9 +22,9 @@ window.DIRECTOR_CONFIG = {
    * 拉流通道列表：在页面「服务器设置 → 拉流通道」里可随时切换，无需改代码。
    *
    * provider 取值：
-   *   "whep"     —— 标准 WHEP / SDP 拉流（自建 ZLMediaKit 等）
-   *   "tcplayer" —— 腾讯云快直播 LEB（加载 TCPlayer，从 video.srcObject 取原生轨道）
-   *   "ali-rts"  —— 阿里云超低延时 RTS（按官方信令规范自实现，待接入）
+   *   "whep"      —— 标准 WHEP / SDP 拉流（自建 ZLMediaKit 等）
+   *   "tcplayer"  —— 腾讯云快直播 LEB（加载 TCPlayer，从 video.srcObject 取原生轨道）
+   *   "aliplayer" —— 阿里云视频直播（加载 Aliplayer Web SDK，支持 RTS 超低延时 / FLV / HLS）
    *
    * urlTemplate 支持三个占位符：
    *   {cam}  机位 ID      {base}  该通道的 base（缺省用全局 serverBase）
@@ -55,9 +55,16 @@ window.DIRECTOR_CONFIG = {
     },
     {
       id: "aliyun",
-      name: "阿里云 超低延时 RTS",
-      provider: "ali-rts",
-      urlTemplate: "artc://拉流域名/live/{cam}?auth_key=鉴权串"
+      name: "阿里云 视频直播 RTS",
+      provider: "aliplayer",
+      /**
+       * 播流地址。artc:// 为超低延时直播（需在控制台开启「超低延时直播」并对播流域名配 HTTPS）；
+       * 若走标准直播，可换成 http(s)://播流域名/live/{cam}.flv（或 .m3u8）。
+       * 带防盗链时地址里有 auth_key，会过期，换场次在这里更新即可。
+       */
+      urlTemplate: "artc://播流域名/live/{cam}?auth_key=鉴权串",
+      // 阿里云 Web 播放器 SDK（RTS 超低延时已作为插件内置）
+      sdkUrl: "https://g.alicdn.com/apsara-media-box/imp-web-player/2.28.3/aliplayer-min.js"
     }
   ],
 
