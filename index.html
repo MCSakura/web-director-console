@@ -172,6 +172,12 @@
       </div>
 
       <div class="control-group">
+        <label class="group-title">机位来源 <span class="mini">每路可选 拉流 / 图片 / 本地视频</span></label>
+        <div id="sourceList" class="source-list"></div>
+        <div class="mini" style="margin-top: 6px;">改完来源后，点「多机位监看」里该机位的「连接」生效（本机素材不保存在浏览器，刷新后需重新选文件）。</div>
+      </div>
+
+      <div class="control-group">
         <label class="group-title">自建服务器地址（{base} 取值） <span class="mini">仅自建 ZLMediaKit 模板用</span></label>
         <input type="text" id="serverInput" placeholder="留空=与页面同源，或填 http://域名:8080" />
         <div class="row" style="margin-top: 8px;">
@@ -212,6 +218,7 @@
           <div class="step-body">
             <div class="step-title">连接机位</div>
             <p>点顶栏「<strong>连接全部机位</strong>」。「多机位监看」里每格会显示当前帧与码率，全部出画面即可。</p>
+            <p class="mini">不想接真流也可以测：右侧「<strong>机位来源</strong>」里每路可选<strong>拉流 / 图片 / 本地视频</strong>——选「图片」或「本地视频」后挑一个文件，再点该机位的「连接」，就能用本地素材当画面（适合彩排、垫片）。</p>
           </div>
         </div>
 

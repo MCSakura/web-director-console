@@ -369,6 +369,188 @@ class AliplayerProvider {
   }
 }
 
+// ============ 本地素材通道（本地图片 / 本地视频，用于测试或垫片） ============
+
+/** 把 File 读成 HTMLImageElement（连同 objectURL，供释放用） */
+function loadImageFile(file) {
+  return new Promise(function (resolve, reject) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () { resolve({ img: img, url: url }); };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      reject(new Error("图片加载失败：" + (file && file.name ? file.name : "")));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * 本地图片：画进 canvas，再按目标帧率手动 requestFrame() 持续产出静止画面。
+ * 用 captureStream(0) 手动出帧，是因为静止画面会被浏览器判定成"没有变化"而不产帧，
+ * 那样帧同步就拿不到足够素材了。
+ */
+class LocalImageProvider {
+  constructor(source, cfg, options) {
+    this.source = source;
+    this.cfg = cfg;
+    this.options = options || {};
+    this.canvas = null;
+    this.stream = null;
+    this.objectUrl = null;
+    this.timer = null;
+    this.closed = false;
+  }
+
+  async start() {
+    var res = await loadImageFile(this.source.file);
+    if (this.closed) {
+      URL.revokeObjectURL(res.url);
+      return;
+    }
+    this.objectUrl = res.url;
+
+    var img = res.img;
+    var w = img.naturalWidth || 1280;
+    var h = img.naturalHeight || 720;
+    var canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    this.canvas = canvas;
+
+    var stream = canvas.captureStream(0);
+    this.stream = stream;
+    var track = stream.getVideoTracks()[0];
+    if (track && this.options.onTrack) this.options.onTrack(track);
+
+    var fps = Math.min(30, (this.cfg.output && this.cfg.output.fps) || 30);
+    this.timer = setInterval(function () {
+      try { if (track) track.requestFrame(); } catch (e) { /* ignore */ }
+    }, Math.round(1000 / fps));
+  }
+
+  close() {
+    this.closed = true;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.stream) {
+      this.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) { /* ignore */ } });
+      this.stream = null;
+    }
+    if (this.objectUrl) {
+      URL.revokeObjectURL(this.objectUrl);
+      this.objectUrl = null;
+    }
+    this.canvas = null;
+  }
+}
+
+/**
+ * 本地视频文件：<video> 循环播放，用 captureStream() 取轨道（有音轨就一起给混音器）。
+ * 元素强制静音，避免绕过混音器直接外放。
+ */
+class LocalVideoProvider {
+  constructor(source, cfg, options) {
+    this.source = source;
+    this.cfg = cfg;
+    this.options = options || {};
+    this.video = null;
+    this.stream = null;
+    this.objectUrl = null;
+    this.timer = null;
+    this.closed = false;
+  }
+
+  async start() {
+    var v = document.createElement("video");
+    v.src = URL.createObjectURL(this.source.file);
+    this.objectUrl = v.src;
+    v.loop = true;
+    v.playsInline = true;
+    v.setAttribute("playsinline", "");
+    v.setAttribute("webkit-playsinline", "");
+    v.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:640px;height:360px;pointer-events:none;";
+    document.body.appendChild(v);
+    forceMuteVideo(v);
+    this.video = v;
+
+    try { await v.play(); } catch (e) { /* 自动播放可能被拦，下面轮询里再试 */ }
+    this._waitForStream();
+  }
+
+  _waitForStream() {
+    var self = this;
+    var waited = 0;
+    var TIMEOUT = 20000;
+
+    function tick() {
+      if (self.closed) return;
+
+      forceMuteVideo(self.video);
+      try { if (self.video && self.video.paused) self.video.play(); } catch (e) { /* ignore */ }
+
+      // readyState >= 2 才有可用画面
+      if (self.video && self.video.readyState >= 2 && self.video.captureStream) {
+        var stream = self.video.captureStream();
+        var tracks = stream ? stream.getTracks() : [];
+        if (tracks.length) {
+          self.stream = stream;
+          tracks.forEach(function (t) {
+            if (self.options.onTrack) self.options.onTrack(t);
+          });
+          return;
+        }
+      }
+
+      waited += 300;
+      if (waited >= TIMEOUT) {
+        if (self.options.onStateChange) self.options.onStateChange("failed");
+        return;
+      }
+      self.timer = setTimeout(tick, 300);
+    }
+    tick();
+  }
+
+  close() {
+    this.closed = true;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.stream) {
+      this.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) { /* ignore */ } });
+      this.stream = null;
+    }
+    if (this.video) {
+      try { this.video.pause(); } catch (e) { /* ignore */ }
+      this.video.src = "";
+      if (this.video.parentNode) this.video.parentNode.removeChild(this.video);
+      this.video = null;
+    }
+    if (this.objectUrl) {
+      URL.revokeObjectURL(this.objectUrl);
+      this.objectUrl = null;
+    }
+  }
+}
+
+/**
+ * 按「机位来源」创建本地素材通道。
+ * source.type 为 "pull" 或没设时返回 null，表示走云端拉流通道。
+ */
+function createLocalProvider(source, cfg, options) {
+  if (!source || !source.type || source.type === "pull") return null;
+  if (!source.file) throw new Error("还没选择本地文件");
+  if (source.type === "image") return new LocalImageProvider(source, cfg, options);
+  if (source.type === "video") return new LocalVideoProvider(source, cfg, options);
+  throw new Error("未知的机位来源：" + source.type);
+}
+
 // ============ 工厂 ============
 function createStreamProvider(cloud, camId, cfg, options) {
   if (!cloud) throw new Error("未找到拉流通道配置");

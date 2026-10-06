@@ -54,6 +54,7 @@
     btnSaveCloud: $("btnSaveCloud"),
     btnResetCloud: $("btnResetCloud"),
     cloudHint: $("cloudHint"),
+    sourceList: $("sourceList"),
     dmRoomInput: $("dmRoomInput"),
     dmGatewayInput: $("dmGatewayInput"),
     dmCookieInput: $("dmCookieInput"),
@@ -650,6 +651,70 @@
     row.appendChild(vol);
     row.appendChild(muteBtn);
     ui.audioList.appendChild(row);
+  }
+
+  // ---------- 构建「机位来源」行（拉流 / 图片 / 本地视频） ----------
+  const SOURCE_LABELS = { pull: "拉流", image: "图片", video: "本地视频" };
+
+  for (const def of CFG.cameras) {
+    const cam = engine.cameras.get(def.id);
+    const row = document.createElement("div");
+    row.className = "source-row";
+
+    const name = document.createElement("span");
+    name.textContent = def.id;
+
+    const sel = document.createElement("select");
+    Object.keys(SOURCE_LABELS).forEach((type) => {
+      const opt = document.createElement("option");
+      opt.value = type;
+      opt.textContent = SOURCE_LABELS[type];
+      sel.appendChild(opt);
+    });
+
+    const pick = document.createElement("button");
+    pick.className = "btn small";
+    pick.textContent = "选择文件";
+    pick.disabled = true;
+
+    const fileName = document.createElement("span");
+    fileName.className = "mini source-name";
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.style.display = "none";
+
+    sel.addEventListener("change", () => {
+      const type = sel.value;
+      pick.disabled = type === "pull";
+      if (type === "pull") {
+        cam.setLocalSource(null);
+        fileName.textContent = "";
+        log("机位 " + def.id + "：来源改回「拉流」，点该机位的「连接」生效");
+        return;
+      }
+      fileInput.accept = type === "video" ? "video/*" : "image/*";
+      cam.setLocalSource({ type: type, file: null });
+      fileName.textContent = "待选择文件";
+      log("机位 " + def.id + "：来源改为「" + SOURCE_LABELS[type] + "」，请选择文件后点该机位的「连接」");
+    });
+
+    pick.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      cam.setLocalSource({ type: sel.value, file: file });
+      fileName.textContent = file.name;
+      log("机位 " + def.id + "：已选择「" + file.name + "」，点该机位的「连接」开始播放", "ok");
+    });
+
+    row.appendChild(name);
+    row.appendChild(sel);
+    row.appendChild(pick);
+    row.appendChild(fileName);
+    row.appendChild(fileInput);
+    ui.sourceList.appendChild(row);
   }
 
   // ---------- 机位切换 ----------

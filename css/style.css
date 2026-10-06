@@ -225,6 +225,29 @@ input::placeholder, textarea::placeholder { color: #5c6b80; }
   font-family: Consolas, "Courier New", monospace;
 }
 
+/* 机位来源：一行一个「机位名 + 来源下拉 + 选文件 + 文件名」 */
+.source-list { display: grid; gap: 6px; }
+.source-row { display: flex; align-items: center; gap: 6px; }
+.source-row > span:first-child {
+  flex: 0 0 auto;
+  width: 40px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.source-row select {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.source-row .source-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 
 /* 文件选择（台标）：按钮跟随页面按钮风格 */

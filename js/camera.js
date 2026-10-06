@@ -24,6 +24,9 @@ class CameraSource {
     this.provider = null;
     this.reader = null;
 
+    /** 本机素材来源：null 或 { type: "image"|"video", file: File }；设了就优先用它，不走云端拉流 */
+    this.localSource = null;
+
     /** 连接代次：每次连接/断开自增，用于丢弃已被取消的连接结果 */
     this.connectionGen = 0;
 
@@ -47,22 +50,24 @@ class CameraSource {
     this.state = "connecting";
     this.errorMessage = "";
 
-    // 每次连接都重新解析当前生效的拉流通道，切换云后在重连时立即生效
-    const cloud = getActiveCloud(this.config);
+    // 连接处理器：本地素材与云端拉流共用
+    const handlers = {
+      onTrack: (track) => {
+        if (gen !== this.connectionGen) return;
+        this._handleTrack(track);
+      },
+      onStateChange: (s) => {
+        if (gen !== this.connectionGen) return;
+        if (s === "failed" || s === "disconnected") {
+          this._fail("连接中断：" + s);
+        }
+      }
+    };
 
     try {
-      this.provider = createStreamProvider(cloud, this.id, this.config, {
-        onTrack: (track) => {
-          if (gen !== this.connectionGen) return;
-          this._handleTrack(track);
-        },
-        onStateChange: (s) => {
-          if (gen !== this.connectionGen) return;
-          if (s === "failed" || s === "disconnected") {
-            this._fail("连接中断：" + s);
-          }
-        }
-      });
+      // 选了本机素材（图片 / 本地视频）就用它；否则按当前生效的拉流通道取流
+      this.provider = createLocalProvider(this.localSource, this.config, handlers) ||
+        createStreamProvider(getActiveCloud(this.config), this.id, this.config, handlers);
     } catch (err) {
       this._fail(err && err.message ? err.message : String(err));
       this._notify();
@@ -155,6 +160,15 @@ class CameraSource {
     this.buffer.clear();
     this.videoTrack = null;
     this.audioTrack = null;
+  }
+
+  /**
+   * 设置本机素材来源（图片 / 本地视频）；传 null 表示改回云端拉流。
+   * 改完需重新点该机位的「连接」才生效。
+   * @param {{type: string, file: File}|null} source
+   */
+  setLocalSource(source) {
+    this.localSource = source || null;
   }
 
   disconnect() {
