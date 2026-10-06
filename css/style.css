@@ -14,6 +14,8 @@
   --accent-dim: #16532f;
   --danger: #ef4444;
   --warn: #f59e0b;
+  /* 内容区最大宽度：浏览器最大化时整体居中，不向两侧无限拉伸 */
+  --content-max: 1680px;
 }
 
 html, body {
@@ -139,7 +141,8 @@ h1, h2 { margin: 0; font-weight: 600; }
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 10px 16px;
+  /* 左右内边距随视口增大而增大，使内容始终与下方 .layout 的居中宽度对齐 */
+  padding: 10px max(16px, calc((100% - var(--content-max)) / 2));
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
@@ -235,6 +238,10 @@ input[type="file"]::file-selector-button:hover { border-color: #3c5a7a; }
   padding: 12px;
   height: calc(100vh - 57px);
   overflow: hidden;
+  /* 浏览器最大化时整体居中：限制最大宽度并水平居中 */
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
 }
 
 .panel {
