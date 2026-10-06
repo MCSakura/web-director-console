@@ -32,6 +32,30 @@ function buildStreamUrl(cloud, camId, cfg) {
     .replace(/\{app\}/g, app);
 }
 
+/**
+ * 播放器只用来取轨道，声音一律交给混音器（「本机监听」开关才决定是否外放）。
+ * 但云播放器 SDK 有时会在起播/切流时把 <video> 的 muted 改回去，
+ * 声音就会绕过混音器直接从扬声器出来。这里强制静音，并在关键事件上再兜一层。
+ */
+function forceMuteVideo(video) {
+  if (!video) return;
+  video.muted = true;
+  video.defaultMuted = true;
+  video.setAttribute("muted", "");
+  video.volume = 0;
+
+  if (video._muteGuard) return;
+  video._muteGuard = true;
+
+  var reassert = function () {
+    video.muted = true;
+    video.volume = 0;
+  };
+  ["play", "playing", "volumechange", "loadeddata", "canplay"].forEach(function (ev) {
+    video.addEventListener(ev, reassert);
+  });
+}
+
 /** 按 id 取当前生效的拉流通道 */
 function getActiveCloud(cfg) {
   var id = cfg.activeCloud;
@@ -130,6 +154,7 @@ class TcPlayerProvider {
       "position:fixed;left:-10000px;top:0;width:640px;height:360px;pointer-events:none;";
     document.body.appendChild(video);
     this.video = video;
+    forceMuteVideo(video);
 
     var opts = {
       sources: [{ src: url, type: "webrtc" }],
@@ -153,6 +178,8 @@ class TcPlayerProvider {
 
     function tick() {
       if (self.closed) return;
+
+      forceMuteVideo(self.video);
 
       var so = self.video && self.video.srcObject;
       if (so && typeof MediaStream !== "undefined" && so instanceof MediaStream) {
@@ -275,6 +302,7 @@ class AliplayerProvider {
 
       var video = self.video || (self.container && self.container.querySelector("video"));
       if (video) self.video = video;
+      forceMuteVideo(video);
 
       var so = video && video.srcObject;
       if (so && typeof MediaStream !== "undefined" && so instanceof MediaStream) {
