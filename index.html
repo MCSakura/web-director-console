@@ -178,6 +178,12 @@
       </div>
 
       <div class="control-group">
+        <label class="group-title">拉流状态 <span class="mini marquee" id="probeHintInline">实时显示每路的协议与编码，用于判断会不会产生转码费</span></label>
+        <div id="probeList" class="probe-list"></div>
+        <div class="mini" style="margin-top: 6px;">转码费取决于<strong>推流端</strong>编码：用 RTS / 快直播（artc / webrtc）且用浏览器播放时，若推流含 <strong>B 帧</strong>或音频为 <strong>AAC</strong>，云端会自动去 B 帧 / 转 Opus 并计费。推流端设成「B 帧 = 0、音频 Opus」即可免除。</div>
+      </div>
+
+      <div class="control-group">
         <label class="group-title">自建服务器地址（{base} 取值） <span class="mini">仅自建 ZLMediaKit 模板用</span></label>
         <input type="text" id="serverInput" placeholder="留空=与页面同源，或填 http://域名:8080" />
         <div class="row" style="margin-top: 8px;">
@@ -287,6 +293,7 @@
         <ul>
           <li><strong>某路缓冲 0 帧 / 黑屏</strong>：核对推流域名/AppName/流名是否与「地址模板」一致，确认推流端确实在线。</li>
           <li><strong>回传失败 -12</strong>：推流地址已过期，重新生成并替换 Token。</li>
+          <li><strong>担心转码费</strong>：用 RTS / 快直播（artc / webrtc）+ 浏览器播放时，若推流含 <strong>B 帧</strong>或音频是 <strong>AAC</strong>，云端会自动去 B 帧 / 转 Opus 并计费。右侧「拉流状态」面板可实时看到每路的协议与协商到的编码；推流端设成「B 帧 = 0、音频用 Opus」即可免除。</li>
           <li><strong>画面卡、声音正常</strong>：上行带宽不足或 CPU 软编码吃紧，先降「回传码率上限」或帧率；更稳的做法是让 OBS 用硬件编码推流。</li>
           <li><strong>OBS 浏览器源黑屏无字</strong>：确认未勾「本地文件」、URL 正确；或改用媒体源直接拉 FLV。</li>
           <li><strong>改了代码没生效</strong>：服务器已设 <code>Cache-Control: no-cache</code>，普通刷新即可；若仍是旧版，Ctrl+Shift+R 强刷。</li>

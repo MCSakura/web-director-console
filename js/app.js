@@ -58,6 +58,8 @@
     sourceHintInline: $("sourceHintInline"),
     syncHintInline: $("syncHintInline"),
     templateHintInline: $("templateHintInline"),
+    probeList: $("probeList"),
+    probeHintInline: $("probeHintInline"),
     dmRoomInput: $("dmRoomInput"),
     dmGatewayInput: $("dmGatewayInput"),
     dmCookieInput: $("dmCookieInput"),
@@ -485,9 +487,10 @@
     log("额外同步延迟已设为 " + v + " ms");
   });
 
-  // 每秒刷新「当前同步延迟」读数
+  // 每秒刷新「当前同步延迟」读数与「拉流状态」面板
   setInterval(() => {
     ui.syncDelayInfo.textContent = "当前同步延迟：" + Math.round(engine.currentDelayMs || 0) + " ms";
+    updateProbePanel();
   }, 1000);
 
   // ---------- 溢出文字自动跑马灯：超宽时循环滚动，到端点停顿后回卷 ----------
@@ -539,6 +542,7 @@
   addMarquee(ui.sourceHintInline);      // 「机位来源」标题右侧的可选值说明
   addMarquee(ui.syncHintInline);        // 「帧同步」标题右侧的自动补偿说明
   addMarquee(ui.templateHintInline);    // 「地址模板」标题右侧的兜底说明
+  addMarquee(ui.probeHintInline);       // 「拉流状态」标题右侧的说明
 
   const danmaku = new DanmakuPanel(CFG.danmaku, { onLog: log });
 
@@ -744,6 +748,77 @@
     row.appendChild(fileName);
     row.appendChild(fileInput);
     ui.sourceList.appendChild(row);
+  }
+
+  // ---------- 构建「拉流状态」卡（协议 / 是否超低延迟 / 实际编码） ----------
+  const probeRows = [];
+
+  for (const def of CFG.cameras) {
+    const row = document.createElement("div");
+    row.className = "probe-row";
+
+    const head = document.createElement("div");
+    head.className = "probe-head";
+    const name = document.createElement("span");
+    name.textContent = def.id;
+    const badge = document.createElement("span");
+    badge.className = "probe-badge";
+    badge.textContent = "未连接";
+    head.appendChild(name);
+    head.appendChild(badge);
+
+    const detail = document.createElement("div");
+    detail.className = "probe-detail";
+    detail.textContent = "—";
+
+    row.appendChild(head);
+    row.appendChild(detail);
+    ui.probeList.appendChild(row);
+    probeRows.push({ camId: def.id, badge: badge, detail: detail });
+  }
+
+  /**
+   * 刷新「拉流状态」：
+   *   协议 —— 按该路当前实际用的地址判定（超低延迟：artc/webrtc/whep）
+   *   编码 —— 从该路轨道反查所在 WebRTC 连接协商到的编解码；拿不到就显示 —
+   */
+  function updateProbePanel() {
+    const cloud = getActiveCloud(CFG);
+
+    probeRows.forEach((item) => {
+      const cam = engine.cameras.get(item.camId);
+      const localType = cam && cam.localSource ? cam.localSource.type : "pull";
+      const isLocal = !!localType && localType !== "pull";
+
+      let proto;
+      let lowLatency;
+      if (isLocal) {
+        proto = SOURCE_LABELS[localType] || "本机素材";
+        lowLatency = true; // 本机素材不经过网络
+      } else {
+        let url = "";
+        try { url = buildStreamUrl(cloud, item.camId, CFG); } catch (e) { url = ""; }
+        const d = describeStreamUrl(url);
+        proto = d.protocol;
+        lowLatency = d.lowLatency;
+      }
+
+      let codecText = "—";
+      if (cam && cam.videoTrack) {
+        const c = codecForTrack(cam.videoTrack);
+        if (c) codecText = (c.video || "?") + " / " + (c.audio || "无音频");
+      }
+
+      const live = cam && cam.state === "live";
+      if (!live) {
+        item.badge.textContent = cam && cam.state === "error" ? "取流失败" : "未连接";
+        item.badge.className = "probe-badge";
+      } else {
+        item.badge.textContent = lowLatency ? "超低延迟" : "标准直播";
+        item.badge.className = "probe-badge " + (lowLatency ? "ok" : "no");
+      }
+      item.detail.textContent = proto + " · " + codecText;
+    });
   }
 
   // ---------- 机位切换 ----------

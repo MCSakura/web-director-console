@@ -75,6 +75,110 @@ function getCloudById(cfg, id) {
   return null;
 }
 
+/* ==================== 拉流协议 / 编码探测（供「拉流状态」面板用） ==================== */
+
+/**
+ * 从拉流地址判断用的是哪种协议、是不是超低延迟方案。
+ * 超低延迟（artc=RTS / webrtc=快直播 / whep）才可能涉及云端自动转码；
+ * flv / hls / rtmp 属于标准直播，直接透传、不转码，但延迟高。
+ */
+function describeStreamUrl(url) {
+  var s = String(url || "").trim().toLowerCase();
+  if (!s) return { protocol: "—", lowLatency: false, ultraLow: false };
+  if (s.indexOf("artc://") === 0) return { protocol: "artc (RTS)", lowLatency: true, ultraLow: true };
+  if (s.indexOf("webrtc://") === 0) return { protocol: "webrtc (快直播)", lowLatency: true, ultraLow: true };
+  if (s.indexOf("rtmp://") === 0) return { protocol: "rtmp", lowLatency: false, ultraLow: false };
+  if (s.indexOf("/index/api/webrtc") >= 0) return { protocol: "whep (ZLMediaKit)", lowLatency: true, ultraLow: true };
+  if (s.indexOf(".m3u8") >= 0) return { protocol: "hls", lowLatency: false, ultraLow: false };
+  if (s.indexOf(".flv") >= 0) return { protocol: "flv", lowLatency: false, ultraLow: false };
+  if (s.indexOf("http://") === 0 || s.indexOf("https://") === 0) {
+    return { protocol: "http(s)", lowLatency: false, ultraLow: false };
+  }
+  return { protocol: "自定义", lowLatency: false, ultraLow: false };
+}
+
+/** SDP 里这些不是真正的编解码，跳过 */
+var SDP_CODEC_IGNORE = { red: 1, rtx: 1, ulpfec: 1, cn: 1, telephone_event: 1, "rtx/90000": 1 };
+
+/** 从 SDP 里取每个 m= 段实际协商的编解码（取第一个 rtpmap） */
+function parseSdpCodecs(sdp) {
+  var out = { audio: "", video: "" };
+  if (!sdp) return out;
+
+  var cur = null;
+  var lines = String(sdp).split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (line.indexOf("m=audio") === 0) { cur = "audio"; continue; }
+    if (line.indexOf("m=video") === 0) { cur = "video"; continue; }
+    if (!cur || out[cur]) continue;
+    var m = /^a=rtpmap:\d+\s+([A-Za-z0-9._-]+)/.exec(line);
+    if (m && !SDP_CODEC_IGNORE[m[1].toLowerCase()]) out[cur] = m[1];
+  }
+  return out;
+}
+
+/**
+ * 云播放器 SDK 把 RTCPeerConnection 藏在自己内部，外部拿不到 receiver，
+ * 也就读不到实际用了什么编码。这里在 setRemoteDescription 上挂一层，
+ * 把协商好的编解码记在连接对象上；之后用「轨道 → 哪个连接的 receiver 拿着它」
+ * 反查，就能知道每路机位实际在用的编码。
+ *
+ * 只做只读观察，不改变原有行为。safari 等不支持时静默跳过。
+ */
+var sniffedPcs = [];
+
+function installCodecSniffer() {
+  if (typeof RTCPeerConnection === "undefined") return;
+  var proto = RTCPeerConnection.prototype;
+  if (proto.__codecSniffer) return;
+
+  var orig = proto.setRemoteDescription;
+  proto.setRemoteDescription = function (desc) {
+    try {
+      if (sniffedPcs.indexOf(this) < 0) sniffedPcs.push(this);
+      if (desc && desc.sdp) {
+        // answer 才是最终协商结果（第一个 rtpmap 就是选中项）；offer 只作兜底
+        if (desc.type === "answer" || !this.__codecs) {
+          this.__codecs = parseSdpCodecs(desc.sdp);
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return orig.apply(this, arguments);
+  };
+  proto.__codecSniffer = true;
+}
+
+/** 按轨道反查它所在连接协商到的编解码；查不到返回 null */
+function codecForTrack(track) {
+  if (!track) return null;
+
+  var alive = [];
+  var found = null;
+
+  for (var i = 0; i < sniffedPcs.length; i++) {
+    var pc = sniffedPcs[i];
+
+    var closed = false;
+    try { closed = pc.connectionState === "closed"; } catch (e) { closed = true; }
+    if (closed) continue; // 顺手剔掉已关闭的连接，避免重连次数多了越攒越多
+    alive.push(pc);
+
+    if (found || !pc.__codecs) continue;
+    try {
+      var recvs = pc.getReceivers();
+      for (var j = 0; j < recvs.length; j++) {
+        if (recvs[j].track === track) { found = pc.__codecs; break; }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  sniffedPcs = alive;
+  return found;
+}
+
+installCodecSniffer();
+
 // ============ 通道一：标准 WHEP / SDP 拉流 ============
 class WhepProvider {
   constructor(cloud, camId, cfg, options) {

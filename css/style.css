@@ -248,6 +248,40 @@ input::placeholder, textarea::placeholder { color: #5c6b80; }
   white-space: nowrap;
 }
 
+/* 拉流状态：每路一张小卡，显示协议 / 是否超低延迟 / 实际编码 */
+.probe-list { display: grid; gap: 6px; }
+.probe-row {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.probe-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+.probe-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+.probe-badge.ok { color: #8ff0b0; border-color: #2f6b45; background: #12271b; }
+.probe-badge.no { color: #ffd18a; border-color: #6b5a2f; background: #27220f; }
+.probe-detail {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: Consolas, "Courier New", monospace;
+  word-break: break-all;
+}
+
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 
 /* 文件选择（台标）：按钮跟随页面按钮风格 */
