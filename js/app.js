@@ -631,14 +631,28 @@
 
   // ---------- 构建 PGM 切换按钮 ----------
   const pgmButtons = new Map();
-  for (const def of CFG.cameras) {
+  CFG.cameras.forEach((def, i) => {
     const btn = document.createElement("button");
     btn.className = "btn cam-btn";
-    btn.textContent = def.name || def.id;
+
+    const label = document.createElement("span");
+    label.textContent = def.name || def.id;
+    btn.appendChild(label);
+
+    // 右侧标出快捷键，方便对号入座
+    const key = hotkeyOf(i);
+    if (key) {
+      const badge = document.createElement("span");
+      badge.className = "cam-key";
+      badge.textContent = key;
+      btn.appendChild(badge);
+      btn.title = "快捷键 " + key;
+    }
+
     btn.addEventListener("click", () => selectProgram(def.id));
     ui.pgmButtons.appendChild(btn);
     pgmButtons.set(def.id, btn);
-  }
+  });
 
   // ---------- 构建画中画下拉 ----------
   for (const def of CFG.cameras) {
@@ -841,6 +855,32 @@
     const cam = engine.cameras.get(id);
     ui.programBadge.textContent = "PGM：" + (cam ? cam.name : id);
   }
+
+  /** 第 index 个机位（从 0 起）的快捷键：1-9；超出范围没有快捷键 */
+  function hotkeyOf(index) {
+    return index >= 0 && index < 9 ? String(index + 1) : "";
+  }
+
+  /**
+   * 键盘快捷键：按数字键直接切到对应机位。
+   * 仅在本窗口/标签页有焦点时生效；正在输入框里打字或带修饰键时不抢按键。
+   */
+  document.addEventListener("keydown", (e) => {
+    if (!document.hasFocus()) return;
+
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" ||
+        t.tagName === "SELECT" || t.isContentEditable)) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    const index = parseInt(e.key, 10) - 1;
+    const def = index >= 0 ? CFG.cameras[index] : null;
+    if (!def) return;
+
+    e.preventDefault();
+    selectProgram(def.id);
+    log("快捷键 " + e.key + "：切到「" + (def.name || def.id) + "」", "ok");
+  });
 
   // ---------- 单路机位连接 / 断开 ----------
   async function connectCamera(id) {

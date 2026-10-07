@@ -479,6 +479,22 @@ input[type="file"]::file-selector-button:hover { border-color: #3c5a7a; }
 .group-title .mini.marquee { text-overflow: clip; }
 
 .btn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.cam-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.cam-key {
+  flex: 0 0 auto;
+  min-width: 16px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  opacity: .6;
+}
 .cam-btn.active { background: var(--accent-dim); border-color: #1f7a45; color: #d7ffe6; }
 
 .row { display: flex; align-items: center; gap: 8px; }
